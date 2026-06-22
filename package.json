@@ -1,0 +1,14 @@
+{
+  "name": "lob-matching-engine",
+  "version": "1.0.0",
+  "description": "Docker-only Node.js development environment for an in-memory LOB matching engine",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}
