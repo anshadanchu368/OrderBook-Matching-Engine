@@ -1,4 +1,4 @@
-import { isValidSide } from "../constants.js";
+import { isValidSide } from "../Constants.js";
 
 
 const assert = (conditon, message) =>  {

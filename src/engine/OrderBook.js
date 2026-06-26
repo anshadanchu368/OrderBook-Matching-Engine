@@ -1,4 +1,4 @@
-import { Side } from "./constants.js";
+import { Side } from "./Constants.js";
 import { OrderNode } from "./OrderNode.js";
 import { PriceLevel } from "./PriceLevel.js";
 
