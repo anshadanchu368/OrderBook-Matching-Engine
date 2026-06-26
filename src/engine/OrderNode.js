@@ -1,4 +1,4 @@
-import { OrderStatus } from "./Constants.js";
+import { OrderStatus, OrderType } from "./Constants.js";
 import { validateOrderInput } from "./utils/Validate.js";
 
 export class OrderNode {
@@ -7,7 +7,8 @@ export class OrderNode {
     userId,
     side,
     symbol,
-    price,
+    type = OrderType.LIMIT,
+    price = null,
     quantity,
     timestamp,
   }) {
@@ -16,6 +17,7 @@ export class OrderNode {
       userId,
       side,
       symbol,
+      type,
       price,
       quantity,
       timestamp,
@@ -25,6 +27,7 @@ export class OrderNode {
     this.userId = userId;
     this.side = side;
     this.symbol = symbol;
+    this.type = type;
     this.price = price;
     this.timestamp = timestamp;
 
@@ -53,6 +56,14 @@ export class OrderNode {
 
   get isActive() {
     return !this.isFilled && !this.isCancelled;
+  }
+
+  get isMarketOrder() {
+    return this.type === OrderType.MARKET;
+  }
+
+  get isLimitOrder() {
+    return this.type === OrderType.LIMIT;
   }
 
   fill(quantity) {
@@ -96,6 +107,7 @@ export class OrderNode {
       userId: this.userId,
       symbol: this.symbol,
       side: this.side,
+      type: this.type,
       price: this.price,
       initialQuantity: this.initialQuantity,
       remainingQuantity: this.remainingQuantity,

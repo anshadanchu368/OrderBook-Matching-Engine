@@ -1,4 +1,4 @@
-import { Side } from "./Constants.js";
+import { OrderType, Side } from "./Constants.js";
 import { OrderNode } from "./OrderNode.js";
 import { PriceLevel } from "./PriceLevel.js";
 
@@ -34,6 +34,7 @@ export class OrderBook {
             userId,
             symbol: this.symbol,
             side,
+            type: OrderType.LIMIT,
             price,
             quantity,
             timestamp,
@@ -55,7 +56,44 @@ export class OrderBook {
         };
     }
 
-    matchBuyOrder(incomingBuyOrder) {
+    placeMarketOrder({
+        orderId,
+        userId,
+        side,
+        quantity,
+        timestamp,
+    }) {
+        if (this.ordersById.has(orderId)) {
+            throw new Error(`order already exists: ${orderId}`);
+        }
+
+        const incomingOrder = new OrderNode({
+            orderId,
+            userId,
+            symbol: this.symbol,
+            side,
+            type: OrderType.MARKET,
+            price: null,
+            quantity,
+            timestamp,
+        });
+
+        const trades =
+            side === Side.BUY
+                ? this.matchBuyOrder(incomingOrder, { ignorePriceLimit: true })
+                : this.matchSellOrder(incomingOrder, { ignorePriceLimit: true });
+
+        if (incomingOrder.remainingQuantity > 0 && incomingOrder.isActive) {
+            incomingOrder.cancel();
+        }
+
+        return {
+            order: incomingOrder.snapshot(),
+            trades,
+        };
+    }
+
+    matchBuyOrder(incomingBuyOrder, { ignorePriceLimit = false } = {}) {
         const trades = [];
 
         while (incomingBuyOrder.remainingQuantity > 0) {
@@ -65,10 +103,9 @@ export class OrderBook {
                 break;
             }//if no ask price sell
 
-            if (bestAskPrice > incomingBuyOrder.price) {
+            if (!ignorePriceLimit && bestAskPrice > incomingBuyOrder.price) {
                 break;
-            }// if lowest price greater than incoming price then no trades should match
-
+            }
             const askLevel = this.asks.get(bestAskPrice); // best price sell limit available at specifuc price level at 101 100.40 is the best sell limit if there is nothing lower than that
             const restingSellOrder = askLevel.peek(); //we look into  first header of double linked list of sell limit ask side which is not matched or remaining
 
@@ -107,7 +144,7 @@ export class OrderBook {
         return trades;
     }
 
-    matchSellOrder(incomingSellOrder) {
+    matchSellOrder(incomingSellOrder, { ignorePriceLimit = false } = {}) {
         const trades = [];
 
         while (incomingSellOrder.remainingQuantity > 0) {
@@ -117,7 +154,7 @@ export class OrderBook {
                 break;
             }
 
-            if (bestBidPrice < incomingSellOrder.price) {
+            if (!ignorePriceLimit && bestBidPrice < incomingSellOrder.price) {
                 break;
             }
 
@@ -160,6 +197,9 @@ export class OrderBook {
     }
 
     addRestingOrder(order) {
+        if (!order.isLimitOrder) {
+            throw new Error("only limit orders can rest in the order book");
+        }
         const bookSide = order.side === Side.BUY ? this.bids : this.asks;
 
         let priceLevel = bookSide.get(order.price);

@@ -1,4 +1,8 @@
-import { isValidSide } from "../Constants.js";
+import {
+  OrderType,
+  isValidOrderType,
+  isValidSide,
+} from "../Constants.js";
 
 import {
   assert,
@@ -13,6 +17,7 @@ export function validateOrderInput({
   userId,
   symbol,
   side,
+  type = OrderType.LIMIT,
   price,
   quantity,
   timestamp,
@@ -22,8 +27,19 @@ export function validateOrderInput({
   assertNonEmptyString("symbol", symbol);
 
   assert(isValidSide(side), `invalid order side: ${side}`);
+  assert(isValidOrderType(type), `invalid order type: ${type}`);
 
-  assertPositiveNumber("price", price);
   assertPositiveInteger("quantity", quantity);
   assertNonNegativeInteger("timestamp", timestamp);
+
+  if (type === OrderType.LIMIT) {
+    assertPositiveNumber("price", price);
+  }
+
+  if (type === OrderType.MARKET) {
+    assert(
+      price === null || price === undefined,
+      "market order price must be null or undefined",
+    );
+  }
 }

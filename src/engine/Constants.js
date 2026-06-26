@@ -4,7 +4,8 @@ export const Side =Object.freeze({
 })
 
 export const OrderType = Object.freeze({
-    LIMIT:"LIMIT"
+    LIMIT:"LIMIT",
+    MARKET:"MARKET"
 })
 
 export const OrderStatus = Object.freeze({
