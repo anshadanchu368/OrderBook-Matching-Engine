@@ -172,6 +172,36 @@ export class OrderBook {
         priceLevel.append(order);
     }
 
+    cancelOrder(orderId) {
+        const order = this.ordersById.get(orderId);
+
+        if (!order) {
+            throw new Error(`order not found: ${orderId}`);
+        }
+
+        if (!order.isActive) {
+            throw new Error(`order ${orderId} is already ${order.status}`);
+        }
+
+        const bookSide = order.side === Side.BUY ? this.bids : this.asks;
+        const priceLevel = order.priceLevel;
+
+        if (!priceLevel) {
+            throw new Error(`order ${orderId} is not attached to a price level`);
+        }
+
+        priceLevel.remove(order);
+        order.cancel();
+
+        this.ordersById.delete(orderId);
+
+        if (priceLevel.isEmpty()) {
+            bookSide.delete(order.price);
+        }
+
+        return order.snapshot();
+    }
+
     getBestBidPrice() {
         if (this.bids.size === 0) {
             return null;

@@ -1,7 +1,7 @@
 import {
   assertPositiveNumber,
   assertPositiveInteger,
-} from "./utils/assertions.js";
+} from "./utils/Assertions.js";
 
 export class PriceLevel {
   constructor(price) {
@@ -112,6 +112,9 @@ export class PriceLevel {
     if (orderNode.priceLevel !== null) {
       throw new Error("order already belongs to a price level");
     }
+     if (!Number.isInteger(orderNode.remainingQuantity) || orderNode.remainingQuantity <= 0) {
+    throw new Error("order remainingQuantity must be a positive integer");
+  }
   }
 
   assertBelongsToLevel(orderNode) {
