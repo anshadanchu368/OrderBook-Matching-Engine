@@ -1,20 +1,17 @@
 import {
-  assertPositiveNumber,
   assertPositiveInteger,
 } from "./utils/Assertions.js";
 
 export class PriceLevel {
-  constructor(price) {
-    assertPositiveNumber("price", price);
+  constructor(priceTicks) {
+    assertPositiveInteger("priceTicks", priceTicks);
 
-    this.price = price;
+    this.priceTicks = priceTicks;
 
     this.head = null;
-
     this.tail = null;
 
     this.totalQuantity = 0;
-
     this.orderCount = 0;
   }
 
@@ -80,7 +77,7 @@ export class PriceLevel {
 
   snapshot() {
     return {
-      price: this.price,
+      priceTicks: this.priceTicks,
       totalQuantity: this.totalQuantity,
       orderCount: this.orderCount,
       headOrderId: this.head?.orderId ?? null,
@@ -105,16 +102,17 @@ export class PriceLevel {
       throw new Error("orderNode is required");
     }
 
-    if (orderNode.price !== this.price) {
-      throw new Error("order price does not match price level");
+    if (orderNode.priceTicks !== this.priceTicks) {
+      throw new Error("order priceTicks does not match price level");
     }
 
     if (orderNode.priceLevel !== null) {
       throw new Error("order already belongs to a price level");
     }
-     if (!Number.isInteger(orderNode.remainingQuantity) || orderNode.remainingQuantity <= 0) {
-    throw new Error("order remainingQuantity must be a positive integer");
-  }
+
+    if (!Number.isInteger(orderNode.remainingQuantity) || orderNode.remainingQuantity <= 0) {
+      throw new Error("order remainingQuantity must be a positive integer");
+    }
   }
 
   assertBelongsToLevel(orderNode) {

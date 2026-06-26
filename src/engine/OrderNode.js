@@ -8,7 +8,7 @@ export class OrderNode {
     side,
     symbol,
     type = OrderType.LIMIT,
-    price = null,
+    priceTicks = null,
     quantity,
     timestamp,
   }) {
@@ -18,7 +18,7 @@ export class OrderNode {
       side,
       symbol,
       type,
-      price,
+      priceTicks,
       quantity,
       timestamp,
     });
@@ -28,7 +28,7 @@ export class OrderNode {
     this.side = side;
     this.symbol = symbol;
     this.type = type;
-    this.price = price;
+    this.priceTicks = priceTicks;
     this.timestamp = timestamp;
 
     this.initialQuantity = quantity;
@@ -108,7 +108,7 @@ export class OrderNode {
       symbol: this.symbol,
       side: this.side,
       type: this.type,
-      price: this.price,
+      priceTicks: this.priceTicks,
       initialQuantity: this.initialQuantity,
       remainingQuantity: this.remainingQuantity,
       filledQuantity: this.filledQuantity,

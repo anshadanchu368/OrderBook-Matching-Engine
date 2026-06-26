@@ -18,7 +18,7 @@ export function validateOrderInput({
   symbol,
   side,
   type = OrderType.LIMIT,
-  price,
+  priceTicks,
   quantity,
   timestamp,
 }) {
@@ -33,12 +33,12 @@ export function validateOrderInput({
   assertNonNegativeInteger("timestamp", timestamp);
 
   if (type === OrderType.LIMIT) {
-    assertPositiveNumber("price", price);
+    assertPositiveInteger("priceTicks", priceTicks);
   }
 
   if (type === OrderType.MARKET) {
     assert(
-      price === null || price === undefined,
+      priceTicks === null || priceTicks === undefined,
       "market order price must be null or undefined",
     );
   }
