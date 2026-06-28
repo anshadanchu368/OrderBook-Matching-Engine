@@ -8,6 +8,8 @@ services:
     volumes:
       - .:/app
       - lob_node_modules:/app/node_modules
+    ports:
+      - "3000:3000"
     command: npm run start
     environment:
       NODE_ENV: development
