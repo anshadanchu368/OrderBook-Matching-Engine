@@ -1,4 +1,4 @@
-import { OrderType, Side } from "./Constants.js";
+import { OrderStatus, OrderType, Side } from "./Constants.js";
 import { OrderNode } from "./OrderNode.js";
 import { PriceLevel } from "./PriceLevel.js";
 
@@ -14,7 +14,10 @@ export class OrderBook {
     this.asks = new Map();
 
     this.ordersById = new Map();
+    this.stopOrdersById = new Map();
+
     this.trades = [];
+    this.lastTradePriceTicks = null;
   }
 
   placeLimitOrder({
@@ -25,9 +28,7 @@ export class OrderBook {
     quantity,
     timestamp,
   }) {
-    if (this.ordersById.has(orderId)) {
-      throw new Error(`order already exists: ${orderId}`);
-    }
+    this.assertOrderIdAvailable(orderId);
 
     const incomingOrder = new OrderNode({
       orderId,
@@ -50,9 +51,12 @@ export class OrderBook {
       this.ordersById.set(orderId, incomingOrder);
     }
 
+    const triggered = this.processStopOrdersAfterTrades(trades);
+
     return {
       order: incomingOrder.snapshot(),
-      trades,
+      trades: [...trades, ...triggered.trades],
+      triggeredOrders: triggered.orders,
     };
   }
 
@@ -63,9 +67,7 @@ export class OrderBook {
     quantity,
     timestamp,
   }) {
-    if (this.ordersById.has(orderId)) {
-      throw new Error(`order already exists: ${orderId}`);
-    }
+    this.assertOrderIdAvailable(orderId);
 
     const incomingOrder = new OrderNode({
       orderId,
@@ -87,10 +89,214 @@ export class OrderBook {
       incomingOrder.cancel();
     }
 
+    const triggered = this.processStopOrdersAfterTrades(trades);
+
     return {
       order: incomingOrder.snapshot(),
-      trades,
+      trades: [...trades, ...triggered.trades],
+      triggeredOrders: triggered.orders,
     };
+  }
+
+  placeStopMarketOrder({
+    orderId,
+    userId,
+    side,
+    triggerPriceTicks,
+    quantity,
+    timestamp,
+  }) {
+    this.assertOrderIdAvailable(orderId);
+
+    const stopOrder = {
+      orderId,
+      userId,
+      symbol: this.symbol,
+      side,
+      type: OrderType.STOP_MARKET,
+      triggerPriceTicks,
+      priceTicks: null,
+      quantity,
+      remainingQuantity: quantity,
+      status: OrderStatus.OPEN,
+      timestamp,
+    };
+
+    this.stopOrdersById.set(orderId, stopOrder);
+
+    return {
+      order: this.getStopOrderSnapshot(stopOrder),
+      trades: [],
+      triggeredOrders: [],
+    };
+  }
+
+  placeStopLimitOrder({
+    orderId,
+    userId,
+    side,
+    triggerPriceTicks,
+    priceTicks,
+    quantity,
+    timestamp,
+  }) {
+    this.assertOrderIdAvailable(orderId);
+
+    const stopOrder = {
+      orderId,
+      userId,
+      symbol: this.symbol,
+      side,
+      type: OrderType.STOP_LIMIT,
+      triggerPriceTicks,
+      priceTicks,
+      quantity,
+      remainingQuantity: quantity,
+      status: OrderStatus.OPEN,
+      timestamp,
+    };
+
+    this.stopOrdersById.set(orderId, stopOrder);
+
+    return {
+      order: this.getStopOrderSnapshot(stopOrder),
+      trades: [],
+      triggeredOrders: [],
+    };
+  }
+
+  processStopOrdersAfterTrades(initialTrades) {
+    const allTriggeredTrades = [];
+    const triggeredOrders = [];
+
+    if (initialTrades.length === 0) {
+      return {
+        trades: allTriggeredTrades,
+        orders: triggeredOrders,
+      };
+    }
+
+    let latestTrades = initialTrades;
+    let cycles = 0;
+    const maxCycles = 1000;
+
+    while (latestTrades.length > 0) {
+      cycles += 1;
+
+      if (cycles > maxCycles) {
+        throw new Error("stop order trigger cycle limit exceeded");
+      }
+
+      const lastTrade = latestTrades[latestTrades.length - 1];
+      this.lastTradePriceTicks = lastTrade.priceTicks;
+
+      const eligibleStopOrders = this.getEligibleStopOrders();
+
+      if (eligibleStopOrders.length === 0) {
+        break;
+      }
+
+      latestTrades = [];
+
+      for (const stopOrder of eligibleStopOrders) {
+        this.stopOrdersById.delete(stopOrder.orderId);
+        stopOrder.status = OrderStatus.TRIGGERED;
+
+        const triggeredResult = this.executeTriggeredStopOrder(stopOrder);
+
+        triggeredOrders.push(this.getStopOrderSnapshot(stopOrder));
+        latestTrades.push(...triggeredResult.trades);
+        allTriggeredTrades.push(...triggeredResult.trades);
+      }
+    }
+
+    return {
+      trades: allTriggeredTrades,
+      orders: triggeredOrders,
+    };
+  }
+
+  getEligibleStopOrders() {
+    if (this.lastTradePriceTicks === null) {
+      return [];
+    }
+
+    const eligible = [];
+
+    for (const stopOrder of this.stopOrdersById.values()) {
+      if (stopOrder.side === Side.BUY) {
+        if (this.lastTradePriceTicks >= stopOrder.triggerPriceTicks) {
+          eligible.push(stopOrder);
+        }
+      }
+
+      if (stopOrder.side === Side.SELL) {
+        if (this.lastTradePriceTicks <= stopOrder.triggerPriceTicks) {
+          eligible.push(stopOrder);
+        }
+      }
+    }
+
+    return eligible;
+  }
+
+  executeTriggeredStopOrder(stopOrder) {
+    if (stopOrder.type === OrderType.STOP_MARKET) {
+      const marketOrder = new OrderNode({
+        orderId: stopOrder.orderId,
+        userId: stopOrder.userId,
+        symbol: this.symbol,
+        side: stopOrder.side,
+        type: OrderType.MARKET,
+        priceTicks: null,
+        quantity: stopOrder.remainingQuantity,
+        timestamp: Date.now(),
+      });
+
+      const trades =
+        marketOrder.side === Side.BUY
+          ? this.matchBuyOrder(marketOrder, { ignorePriceLimit: true })
+          : this.matchSellOrder(marketOrder, { ignorePriceLimit: true });
+
+      if (marketOrder.remainingQuantity > 0 && marketOrder.isActive) {
+        marketOrder.cancel();
+      }
+
+      return {
+        order: marketOrder.snapshot(),
+        trades,
+      };
+    }
+
+    if (stopOrder.type === OrderType.STOP_LIMIT) {
+      const limitOrder = new OrderNode({
+        orderId: stopOrder.orderId,
+        userId: stopOrder.userId,
+        symbol: this.symbol,
+        side: stopOrder.side,
+        type: OrderType.LIMIT,
+        priceTicks: stopOrder.priceTicks,
+        quantity: stopOrder.remainingQuantity,
+        timestamp: Date.now(),
+      });
+
+      const trades =
+        limitOrder.side === Side.BUY
+          ? this.matchBuyOrder(limitOrder)
+          : this.matchSellOrder(limitOrder);
+
+      if (limitOrder.isActive && limitOrder.remainingQuantity > 0) {
+        this.addRestingOrder(limitOrder);
+        this.ordersById.set(limitOrder.orderId, limitOrder);
+      }
+
+      return {
+        order: limitOrder.snapshot(),
+        trades,
+      };
+    }
+
+    throw new Error(`unsupported stop order type: ${stopOrder.type}`);
   }
 
   matchBuyOrder(incomingBuyOrder, { ignorePriceLimit = false } = {}) {
@@ -215,6 +421,14 @@ export class OrderBook {
   }
 
   cancelOrder(orderId) {
+    const stopOrder = this.stopOrdersById.get(orderId);
+
+    if (stopOrder) {
+      stopOrder.status = OrderStatus.CANCELLED;
+      this.stopOrdersById.delete(orderId);
+      return this.getStopOrderSnapshot(stopOrder);
+    }
+
     const order = this.ordersById.get(orderId);
 
     if (!order) {
@@ -244,6 +458,12 @@ export class OrderBook {
     return order.snapshot();
   }
 
+  assertOrderIdAvailable(orderId) {
+    if (this.ordersById.has(orderId) || this.stopOrdersById.has(orderId)) {
+      throw new Error(`order already exists: ${orderId}`);
+    }
+  }
+
   getBestBidPriceTicks() {
     if (this.bids.size === 0) {
       return null;
@@ -265,8 +485,28 @@ export class OrderBook {
       symbol: this.symbol,
       bestBidPriceTicks: this.getBestBidPriceTicks(),
       bestAskPriceTicks: this.getBestAskPriceTicks(),
+      lastTradePriceTicks: this.lastTradePriceTicks,
+      stopOrders: [...this.stopOrdersById.values()].map((order) =>
+        this.getStopOrderSnapshot(order),
+      ),
       bids: this.getBookSideSnapshot(this.bids, Side.BUY),
       asks: this.getBookSideSnapshot(this.asks, Side.SELL),
+    };
+  }
+
+  getStopOrderSnapshot(order) {
+    return {
+      orderId: order.orderId,
+      userId: order.userId,
+      symbol: order.symbol,
+      side: order.side,
+      type: order.type,
+      triggerPriceTicks: order.triggerPriceTicks,
+      priceTicks: order.priceTicks,
+      quantity: order.quantity,
+      remainingQuantity: order.remainingQuantity,
+      status: order.status,
+      timestamp: order.timestamp,
     };
   }
 

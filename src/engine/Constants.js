@@ -5,14 +5,17 @@ export const Side =Object.freeze({
 
 export const OrderType = Object.freeze({
     LIMIT:"LIMIT",
-    MARKET:"MARKET"
+    MARKET:"MARKET",
+    STOP_MARKET:"STOP_MARKET",
+    STOP_LIMIT:"STOP_LIMIT"
 })
 
 export const OrderStatus = Object.freeze({
     OPEN:"OPEN",
     PARTIALLY_FILLED:"PARTIALLY_FILLED",
     FILLED:"FILLED",
-    CANCELLED:"CANCELLED"
+    CANCELLED:"CANCELLED",
+    TRIGGERED:"TRIGGERED"
 })
 
 const VALID_SIDES = new Set(Object.values(Side));

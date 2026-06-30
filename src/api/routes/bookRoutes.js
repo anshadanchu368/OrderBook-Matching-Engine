@@ -85,6 +85,61 @@ bookRouter.post("/books/:symbol/orders/market", (request, response) => {
   });
 });
 
+bookRouter.post("/books/:symbol/orders/stop-market", (request, response) => {
+  const { symbol } = request.params;
+  const { orderId, userId, side, triggerPriceTicks, quantity, timestamp } =
+    request.body;
+
+  const book = bookRegistry.getOrCreateBook(symbol);
+
+  const result = book.placeStopMarketOrder({
+    orderId,
+    userId,
+    side,
+    triggerPriceTicks,
+    quantity,
+    timestamp,
+  });
+
+  broadcastBookUpdate(symbol, book.snapshot());
+
+  response.status(201).json({
+    success: true,
+    data: result,
+  });
+});
+
+bookRouter.post("/books/:symbol/orders/stop-limit", (request, response) => {
+  const { symbol } = request.params;
+  const {
+    orderId,
+    userId,
+    side,
+    triggerPriceTicks,
+    priceTicks,
+    quantity,
+    timestamp,
+  } = request.body;
+
+  const book = bookRegistry.getOrCreateBook(symbol);
+
+  const result = book.placeStopLimitOrder({
+    orderId,
+    userId,
+    side,
+    triggerPriceTicks,
+    priceTicks,
+    quantity,
+    timestamp,
+  });
+
+  broadcastBookUpdate(symbol, book.snapshot());
+
+  response.status(201).json({
+    success: true,
+    data: result,
+  });
+});
 bookRouter.delete("/books/:symbol/orders/:orderId", (request, response) => {
   const { symbol, orderId } = request.params;
 
