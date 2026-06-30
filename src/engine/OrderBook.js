@@ -60,6 +60,60 @@ export class OrderBook {
     };
   }
 
+  placeTrailingStopMarketOrder({
+    orderId,
+    userId,
+    side,
+    trailingAmountTicks,
+    quantity,
+    timestamp,
+  }) {
+    this.assertOrderIdAvailable(orderId);
+
+    if (this.lastTradePriceTicks === null) {
+      throw new Error("cannot place trailing stop before first trade");
+    }
+
+    if (!Number.isInteger(trailingAmountTicks) || trailingAmountTicks <= 0) {
+      throw new Error("trailingAmountTicks must be a positive integer");
+    }
+
+    const peakPriceTicks = //highest traded price seen after order placement
+      side === Side.SELL ? this.lastTradePriceTicks : null;
+
+    const valleyPriceTicks =
+      side === Side.BUY ? this.lastTradePriceTicks : null;
+
+    const triggerPriceTicks =
+      side === Side.SELL
+        ? this.lastTradePriceTicks - trailingAmountTicks
+        : this.lastTradePriceTicks + trailingAmountTicks;
+
+    const trailingStopOrder = {
+      orderId,
+      userId,
+      symbol: this.symbol,
+      side,
+      type: OrderType.TRAILING_STOP_MARKET,
+      triggerPriceTicks,
+      priceTicks: null,
+      trailingAmountTicks,
+      peakPriceTicks,
+      valleyPriceTicks,
+      quantity,
+      remainingQuantity: quantity,
+      status: OrderStatus.OPEN,
+      timestamp,
+    };
+
+    this.stopOrdersById.set(orderId, trailingStopOrder);
+
+    return {
+      order: this.getStopOrderSnapshot(trailingStopOrder),
+      trades: [],
+      triggeredOrders: [],
+    };
+  }
   placeMarketOrder({
     orderId,
     userId,
@@ -190,6 +244,8 @@ export class OrderBook {
       const lastTrade = latestTrades[latestTrades.length - 1];
       this.lastTradePriceTicks = lastTrade.priceTicks;
 
+      this.updateTrailingStopOrders();
+
       const eligibleStopOrders = this.getEligibleStopOrders();
 
       if (eligibleStopOrders.length === 0) {
@@ -214,6 +270,40 @@ export class OrderBook {
       trades: allTriggeredTrades,
       orders: triggeredOrders,
     };
+  }
+
+  updateTrailingStopOrders() {
+    if (this.lastTradePriceTicks === null) {
+      return;
+    }
+
+    for (const stopOrder of this.stopOrdersById.values()) {
+      if (stopOrder.type !== OrderType.TRAILING_STOP_MARKET) {
+        continue;
+      }
+
+      if (stopOrder.side === Side.SELL) {
+        if (
+          stopOrder.peakPriceTicks === null ||
+          this.lastTradePriceTicks > stopOrder.peakPriceTicks
+        ) {
+          stopOrder.peakPriceTicks = this.lastTradePriceTicks;
+          stopOrder.triggerPriceTicks =
+            stopOrder.peakPriceTicks - stopOrder.trailingAmountTicks;
+        }
+      }
+
+      if (stopOrder.side === Side.BUY) {
+        if (
+          stopOrder.valleyPriceTicks === null ||
+          this.lastTradePriceTicks < stopOrder.valleyPriceTicks
+        ) {
+          stopOrder.valleyPriceTicks = this.lastTradePriceTicks;
+          stopOrder.triggerPriceTicks =
+            stopOrder.valleyPriceTicks + stopOrder.trailingAmountTicks;
+        }
+      }
+    }
   }
 
   getEligibleStopOrders() {
@@ -241,7 +331,7 @@ export class OrderBook {
   }
 
   executeTriggeredStopOrder(stopOrder) {
-    if (stopOrder.type === OrderType.STOP_MARKET) {
+    if (stopOrder.type === OrderType.STOP_MARKET || stopOrder.type === OrderType.TRAILING_STOP_MARKET) {
       const marketOrder = new OrderNode({
         orderId: stopOrder.orderId,
         userId: stopOrder.userId,
@@ -495,19 +585,22 @@ export class OrderBook {
   }
 
   getStopOrderSnapshot(order) {
-    return {
-      orderId: order.orderId,
-      userId: order.userId,
-      symbol: order.symbol,
-      side: order.side,
-      type: order.type,
-      triggerPriceTicks: order.triggerPriceTicks,
-      priceTicks: order.priceTicks,
-      quantity: order.quantity,
-      remainingQuantity: order.remainingQuantity,
-      status: order.status,
-      timestamp: order.timestamp,
-    };
+ return {
+  orderId: order.orderId,
+  userId: order.userId,
+  symbol: order.symbol,
+  side: order.side,
+  type: order.type,
+  triggerPriceTicks: order.triggerPriceTicks,
+  priceTicks: order.priceTicks,
+  trailingAmountTicks: order.trailingAmountTicks ?? null,
+  peakPriceTicks: order.peakPriceTicks ?? null,
+  valleyPriceTicks: order.valleyPriceTicks ?? null,
+  quantity: order.quantity,
+  remainingQuantity: order.remainingQuantity,
+  status: order.status,
+  timestamp: order.timestamp,
+};
   }
 
   getBookSideSnapshot(bookSide, side) {

@@ -140,6 +140,30 @@ bookRouter.post("/books/:symbol/orders/stop-limit", (request, response) => {
     data: result,
   });
 });
+
+bookRouter.post("/books/:symbol/orders/trailing-stop-market", (request, response) => {
+  const { symbol } = request.params;
+  const { orderId, userId, side, trailingAmountTicks, quantity, timestamp } =
+    request.body;
+
+  const book = bookRegistry.getOrCreateBook(symbol);
+
+  const result = book.placeTrailingStopMarketOrder({
+    orderId,
+    userId,
+    side,
+    trailingAmountTicks,
+    quantity,
+    timestamp,
+  });
+
+  broadcastBookUpdate(symbol, book.snapshot());
+
+  response.status(201).json({
+    success: true,
+    data: result,
+  });
+});
 bookRouter.delete("/books/:symbol/orders/:orderId", (request, response) => {
   const { symbol, orderId } = request.params;
 

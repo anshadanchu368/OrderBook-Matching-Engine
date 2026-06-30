@@ -7,7 +7,8 @@ export const OrderType = Object.freeze({
     LIMIT:"LIMIT",
     MARKET:"MARKET",
     STOP_MARKET:"STOP_MARKET",
-    STOP_LIMIT:"STOP_LIMIT"
+    STOP_LIMIT:"STOP_LIMIT",
+    TRAILING_STOP_MARKET: "TRAILING_STOP_MARKET",
 })
 
 export const OrderStatus = Object.freeze({
@@ -15,7 +16,8 @@ export const OrderStatus = Object.freeze({
     PARTIALLY_FILLED:"PARTIALLY_FILLED",
     FILLED:"FILLED",
     CANCELLED:"CANCELLED",
-    TRIGGERED:"TRIGGERED"
+    TRIGGERED:"TRIGGERED",
+    TRAILING_STOP_MARKET: "TRAILING_STOP_MARKET",
 })
 
 const VALID_SIDES = new Set(Object.values(Side));
