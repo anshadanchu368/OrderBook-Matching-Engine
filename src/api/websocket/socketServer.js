@@ -79,3 +79,11 @@ export function broadcastTrades(symbol, trades) {
     });
   }
 }
+
+export function broadcastDomainEvents(symbol,events=[]){
+  if(!ioInstance || events.length === 0) return 
+
+  for(const event of events){
+    ioInstance.to(`book:${symbol}`).emit("trade:created",event)
+  }
+}

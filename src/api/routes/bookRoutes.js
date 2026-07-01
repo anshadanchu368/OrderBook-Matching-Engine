@@ -1,6 +1,6 @@
 import express from "express";
 import { bookRegistry } from "../services/BookRegistry.js";
-import { broadcastBookUpdate, broadcastTrades } from "../websocket/socketServer.js";
+import { broadcastBookUpdate, broadcastDomainEvents, broadcastTrades } from "../websocket/socketServer.js";
 
 export const bookRouter = express.Router();
 
@@ -53,8 +53,7 @@ bookRouter.post("/books/:symbol/orders/limit", (request, response) => {
     timestamp,
   });
 
-  broadcastTrades(symbol, result.trades);
-  broadcastBookUpdate(symbol, book.snapshot());
+  broadcastDomainEvents(symbol,result.events)
 
   response.status(201).json({
     success: true,
@@ -76,8 +75,7 @@ bookRouter.post("/books/:symbol/orders/market", (request, response) => {
     timestamp,
   });
 
-  broadcastTrades(symbol, result.trades);
-  broadcastBookUpdate(symbol, book.snapshot());
+  broadcastDomainEvents(symbol,result.events)
 
   response.status(201).json({
     success: true,
@@ -101,7 +99,7 @@ bookRouter.post("/books/:symbol/orders/stop-market", (request, response) => {
     timestamp,
   });
 
-  broadcastBookUpdate(symbol, book.snapshot());
+  broadcastDomainEvents(symbol, result.events);
 
   response.status(201).json({
     success: true,
@@ -133,7 +131,7 @@ bookRouter.post("/books/:symbol/orders/stop-limit", (request, response) => {
     timestamp,
   });
 
-  broadcastBookUpdate(symbol, book.snapshot());
+  broadcastDomainEvents(symbol, result.events);
 
   response.status(201).json({
     success: true,
@@ -157,7 +155,7 @@ bookRouter.post("/books/:symbol/orders/trailing-stop-market", (request, response
     timestamp,
   });
 
-  broadcastBookUpdate(symbol, book.snapshot());
+  broadcastDomainEvents(symbol, result.events);
 
   response.status(201).json({
     success: true,
@@ -171,7 +169,7 @@ bookRouter.delete("/books/:symbol/orders/:orderId", (request, response) => {
 
   const result = book.cancelOrder(orderId);
 
-  broadcastBookUpdate(symbol, book.snapshot());
+  broadcastDomainEvents(symbol, result.events);
 
   response.json({
     success: true,

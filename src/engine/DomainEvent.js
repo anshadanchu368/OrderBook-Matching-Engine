@@ -135,10 +135,7 @@ export function createStopOrderTriggeredEvent(order) {
 export function createBookUpdatedEvent(snapshot) {
   return {
     type: DomainEventType.BOOK_UPDATED,
-    symbol: snapshot.symbol,
-    bestBidPriceTicks: snapshot.bestBidPriceTicks,
-    bestAskPriceTicks: snapshot.bestAskPriceTicks,
-    lastTradePriceTicks: snapshot.lastTradePriceTicks,
+    snapshot,
     timestamp: Date.now(),
   };
 }
