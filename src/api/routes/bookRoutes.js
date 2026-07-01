@@ -169,14 +169,12 @@ bookRouter.delete("/books/:symbol/orders/:orderId", (request, response) => {
 
   const book = bookRegistry.getOrCreateBook(symbol);
 
-  const cancelledOrder = book.cancelOrder(orderId);
+  const result = book.cancelOrder(orderId);
 
   broadcastBookUpdate(symbol, book.snapshot());
 
   response.json({
     success: true,
-    data: {
-      order: cancelledOrder,
-    },
+    data: result,
   });
 });
