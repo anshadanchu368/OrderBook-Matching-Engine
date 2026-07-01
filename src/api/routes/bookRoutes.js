@@ -1,6 +1,6 @@
 import express from "express";
 import { bookRegistry } from "../services/BookRegistry.js";
-import { broadcastBookUpdate, broadcastDomainEvents, broadcastTrades } from "../websocket/socketServer.js";
+import { broadcastDomainEvents } from "../websocket/socketServer.js";
 
 export const bookRouter = express.Router();
 
@@ -41,7 +41,7 @@ bookRouter.get("/books/:symbol/trades", (request, response) => {
 bookRouter.post("/books/:symbol/orders/limit", (request, response) => {
   const { symbol } = request.params;
   const { orderId, userId, side, priceTicks, quantity, timestamp } = request.body;
-
+  
   const book = bookRegistry.getOrCreateBook(symbol);
 
   const result = book.placeLimitOrder({
@@ -52,7 +52,8 @@ bookRouter.post("/books/:symbol/orders/limit", (request, response) => {
     quantity,
     timestamp,
   });
-
+  console.log("LIMIT EVENTS:", result.events.map((event) => event.type));
+  
   broadcastDomainEvents(symbol,result.events)
 
   response.status(201).json({

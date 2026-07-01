@@ -62,6 +62,27 @@ function waitForEvent(socket, eventName, timeoutMs = 1000) {
   });
 }
 
+function waitForDomainEvent(socket, expectedType, timeoutMs = 1000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off("domain:event", handler);
+      reject(new Error(`Timed out waiting for domain:event ${expectedType}`));
+    }, timeoutMs);
+
+    function handler(event) {
+      if (event.type !== expectedType) {
+        return;
+      }
+
+      clearTimeout(timer);
+      socket.off("domain:event", handler);
+      resolve(event);
+    }
+
+    socket.on("domain:event", handler);
+  });
+}
+
 function waitForNoEvent(socket, eventName, timeoutMs = 300) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -122,7 +143,7 @@ test("websocket client can connect and subscribe to a book", async () => {
   }
 });
 
-test("placing a limit order broadcasts book:update to subscribed clients", async () => {
+test("placing a limit order broadcasts BOOK_UPDATED domain event to subscribed clients", async () => {
   const server = await createTestServer();
   const socket = connectSocket(server.baseUrl);
 
@@ -137,7 +158,7 @@ test("placing a limit order broadcasts book:update to subscribed clients", async
 
     await subscribedPromise;
 
-    const bookUpdatePromise = waitForEvent(socket, "book:update");
+    const bookUpdatePromise = waitForDomainEvent(socket, "BOOK_UPDATED");
 
     const response = await request(server.httpServer)
       .post("/api/v1/books/BTC-INR/orders/limit")
@@ -156,9 +177,8 @@ test("placing a limit order broadcasts book:update to subscribed clients", async
     const event = await bookUpdatePromise;
 
     assert.equal(event.type, "BOOK_UPDATED");
-    assert.equal(event.symbol, "BTC-INR");
-    assert.equal(event.data.symbol, "BTC-INR");
-    assert.equal(event.data.bestAskPriceTicks, 10100);
+    assert.equal(event.snapshot.symbol, "BTC-INR");
+    assert.equal(event.snapshot.bestAskPriceTicks, 10100);
   } finally {
     await closeTestServer({
       socket,
@@ -168,7 +188,7 @@ test("placing a limit order broadcasts book:update to subscribed clients", async
   }
 });
 
-test("matching orders broadcast trade:created and book:update", async () => {
+test("matching orders broadcast TRADE_CREATED and BOOK_UPDATED domain events", async () => {
   const server = await createTestServer();
   const socket = connectSocket(server.baseUrl);
 
@@ -183,7 +203,7 @@ test("matching orders broadcast trade:created and book:update", async () => {
 
     await subscribedPromise;
 
-    const firstBookUpdatePromise = waitForEvent(socket, "book:update");
+    const firstBookUpdatePromise = waitForDomainEvent(socket, "BOOK_UPDATED");
 
     const sellResponse = await request(server.httpServer)
       .post("/api/v1/books/BTC-INR/orders/limit")
@@ -199,8 +219,8 @@ test("matching orders broadcast trade:created and book:update", async () => {
     assert.equal(sellResponse.status, 201);
     await firstBookUpdatePromise;
 
-    const tradePromise = waitForEvent(socket, "trade:created");
-    const secondBookUpdatePromise = waitForEvent(socket, "book:update");
+    const tradePromise = waitForDomainEvent(socket, "TRADE_CREATED");
+    const secondBookUpdatePromise = waitForDomainEvent(socket, "BOOK_UPDATED");
 
     const buyResponse = await request(server.httpServer)
       .post("/api/v1/books/BTC-INR/orders/limit")
@@ -220,11 +240,11 @@ test("matching orders broadcast trade:created and book:update", async () => {
 
     assert.equal(tradeEvent.type, "TRADE_CREATED");
     assert.equal(tradeEvent.symbol, "BTC-INR");
-    assert.equal(tradeEvent.data.priceTicks, 10100);
-    assert.equal(tradeEvent.data.quantity, 5);
+    assert.equal(tradeEvent.priceTicks, 10100);
+    assert.equal(tradeEvent.quantity, 5);
 
     assert.equal(bookUpdateEvent.type, "BOOK_UPDATED");
-    assert.equal(bookUpdateEvent.symbol, "BTC-INR");
+    assert.equal(bookUpdateEvent.snapshot.symbol, "BTC-INR");
   } finally {
     await closeTestServer({
       socket,
@@ -234,7 +254,7 @@ test("matching orders broadcast trade:created and book:update", async () => {
   }
 });
 
-test("unsubscribed clients do not receive book:update", async () => {
+test("unsubscribed clients do not receive domain:event", async () => {
   const server = await createTestServer();
   const socket = connectSocket(server.baseUrl);
 
@@ -260,13 +280,13 @@ test("unsubscribed clients do not receive book:update", async () => {
     assert.equal(unsubscribeMessage.symbol, "BTC-INR");
     assert.equal(unsubscribeMessage.room, "book:BTC-INR");
 
-    const noBookUpdatePromise = waitForNoEvent(socket, "book:update");
+    const noDomainEventPromise = waitForNoEvent(socket, "domain:event");
 
     const response = await request(server.httpServer)
       .post("/api/v1/books/BTC-INR/orders/limit")
       .send({
         orderId: "S3",
-        userId: "U3",
+        userId: "U3", 
         side: "SELL",
         priceTicks: 10200,
         quantity: 10,
@@ -275,7 +295,7 @@ test("unsubscribed clients do not receive book:update", async () => {
 
     assert.equal(response.status, 201);
 
-    await noBookUpdatePromise;
+    await noDomainEventPromise;
   } finally {
     await closeTestServer({
       socket,
