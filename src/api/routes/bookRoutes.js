@@ -163,6 +163,7 @@ bookRouter.post("/books/:symbol/orders/trailing-stop-market", (request, response
     data: result,
   });
 });
+
 bookRouter.delete("/books/:symbol/orders/:orderId", (request, response) => {
   const { symbol, orderId } = request.params;
 
