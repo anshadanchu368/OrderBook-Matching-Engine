@@ -1,8 +1,33 @@
 import express from "express";
+import { randomUUID } from "node:crypto";
 import { bookRegistry } from "../services/BookRegistry.js";
-import { broadcastDomainEvents } from "../websocket/socketServer.js";
+import { orderCommandBus } from "../../application/commands/orderCommandBus.js";
+import { OrderCommandType } from "../../application/commands/OrderCommandTypes.js";
 
 export const bookRouter = express.Router();
+
+function createOrderCommand({ type, symbol, payload }) {
+  return {
+    commandId: randomUUID(),
+    type,
+    symbol,
+    payload,
+    createdAt: Date.now(),
+  };
+}
+
+function createQueuedResponse(command, extraData = {}) {
+  return {
+    success: true,
+    data: {
+      status: "QUEUED",
+      commandId: command.commandId,
+      commandType: command.type,
+      symbol: command.symbol,
+      ...extraData,
+    },
+  };
+}
 
 bookRouter.get("/symbols", (request, response) => {
   response.json({
@@ -38,143 +63,198 @@ bookRouter.get("/books/:symbol/trades", (request, response) => {
   });
 });
 
-bookRouter.post("/books/:symbol/orders/limit", (request, response) => {
-  const { symbol } = request.params;
-  const { orderId, userId, side, priceTicks, quantity, timestamp } = request.body;
-  
-  const book = bookRegistry.getOrCreateBook(symbol);
+bookRouter.post("/books/:symbol/orders/limit", async (request, response, next) => {
+  try {
+    const { symbol } = request.params;
+    const { orderId, userId, side, priceTicks, quantity, timestamp } =
+      request.body;
 
-  const result = book.placeLimitOrder({
-    orderId,
-    userId,
-    side,
-    priceTicks,
-    quantity,
-    timestamp,
-  });
-  console.log("LIMIT EVENTS:", result.events.map((event) => event.type));
-  
-  broadcastDomainEvents(symbol,result.events)
+    const command = createOrderCommand({
+      type: OrderCommandType.PLACE_LIMIT_ORDER,
+      symbol,
+      payload: {
+        orderId,
+        userId,
+        side,
+        priceTicks,
+        quantity,
+        timestamp,
+      },
+    });
 
-  response.status(201).json({
-    success: true,
-    data: result,
-  });
+    await orderCommandBus.publish(command);
+
+    response.status(202).json(
+      createQueuedResponse(command, {
+        orderId,
+      }),
+    );
+  } catch (error) {
+    next(error);
+  }
 });
 
-bookRouter.post("/books/:symbol/orders/market", (request, response) => {
-  const { symbol } = request.params;
-  const { orderId, userId, side, quantity, timestamp } = request.body;
+bookRouter.post("/books/:symbol/orders/market", async (request, response, next) => {
+  try {
+    const { symbol } = request.params;
+    const { orderId, userId, side, quantity, timestamp } = request.body;
 
-  const book = bookRegistry.getOrCreateBook(symbol);
+    const command = createOrderCommand({
+      type: OrderCommandType.PLACE_MARKET_ORDER,
+      symbol,
+      payload: {
+        orderId,
+        userId,
+        side,
+        quantity,
+        timestamp,
+      },
+    });
 
-  const result = book.placeMarketOrder({
-    orderId,
-    userId,
-    side,
-    quantity,
-    timestamp,
-  });
+    await orderCommandBus.publish(command);
 
-  broadcastDomainEvents(symbol,result.events)
-
-  response.status(201).json({
-    success: true,
-    data: result,
-  });
+    response.status(202).json(
+      createQueuedResponse(command, {
+        orderId,
+      }),
+    );
+  } catch (error) {
+    next(error);
+  }
 });
 
-bookRouter.post("/books/:symbol/orders/stop-market", (request, response) => {
-  const { symbol } = request.params;
-  const { orderId, userId, side, triggerPriceTicks, quantity, timestamp } =
-    request.body;
+bookRouter.post(
+  "/books/:symbol/orders/stop-market",
+  async (request, response, next) => {
+    try {
+      const { symbol } = request.params;
+      const { orderId, userId, side, triggerPriceTicks, quantity, timestamp } =
+        request.body;
 
-  const book = bookRegistry.getOrCreateBook(symbol);
+      const command = createOrderCommand({
+        type: OrderCommandType.PLACE_STOP_MARKET_ORDER,
+        symbol,
+        payload: {
+          orderId,
+          userId,
+          side,
+          triggerPriceTicks,
+          quantity,
+          timestamp,
+        },
+      });
 
-  const result = book.placeStopMarketOrder({
-    orderId,
-    userId,
-    side,
-    triggerPriceTicks,
-    quantity,
-    timestamp,
-  });
+      await orderCommandBus.publish(command);
 
-  broadcastDomainEvents(symbol, result.events);
+      response.status(202).json(
+        createQueuedResponse(command, {
+          orderId,
+        }),
+      );
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
-  response.status(201).json({
-    success: true,
-    data: result,
-  });
-});
+bookRouter.post(
+  "/books/:symbol/orders/stop-limit",
+  async (request, response, next) => {
+    try {
+      const { symbol } = request.params;
+      const {
+        orderId,
+        userId,
+        side,
+        triggerPriceTicks,
+        priceTicks,
+        quantity,
+        timestamp,
+      } = request.body;
 
-bookRouter.post("/books/:symbol/orders/stop-limit", (request, response) => {
-  const { symbol } = request.params;
-  const {
-    orderId,
-    userId,
-    side,
-    triggerPriceTicks,
-    priceTicks,
-    quantity,
-    timestamp,
-  } = request.body;
+      const command = createOrderCommand({
+        type: OrderCommandType.PLACE_STOP_LIMIT_ORDER,
+        symbol,
+        payload: {
+          orderId,
+          userId,
+          side,
+          triggerPriceTicks,
+          priceTicks,
+          quantity,
+          timestamp,
+        },
+      });
 
-  const book = bookRegistry.getOrCreateBook(symbol);
+      await orderCommandBus.publish(command);
 
-  const result = book.placeStopLimitOrder({
-    orderId,
-    userId,
-    side,
-    triggerPriceTicks,
-    priceTicks,
-    quantity,
-    timestamp,
-  });
+      response.status(202).json(
+        createQueuedResponse(command, {
+          orderId,
+        }),
+      );
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+bookRouter.post(
+  "/books/:symbol/orders/trailing-stop-market",
+  async (request, response, next) => {
+    try {
+      const { symbol } = request.params;
+      const { orderId, userId, side, trailingAmountTicks, quantity, timestamp } =
+        request.body;
 
-  broadcastDomainEvents(symbol, result.events);
+      const command = createOrderCommand({
+        type: OrderCommandType.PLACE_TRAILING_STOP_MARKET_ORDER,
+        symbol,
+        payload: {
+          orderId,
+          userId,
+          side,
+          trailingAmountTicks,
+          quantity,
+          timestamp,
+        },
+      });
 
-  response.status(201).json({
-    success: true,
-    data: result,
-  });
-});
+      await orderCommandBus.publish(command);
 
-bookRouter.post("/books/:symbol/orders/trailing-stop-market", (request, response) => {
-  const { symbol } = request.params;
-  const { orderId, userId, side, trailingAmountTicks, quantity, timestamp } =
-    request.body;
+      response.status(202).json(
+        createQueuedResponse(command, {
+          orderId,
+        }),
+      );
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
-  const book = bookRegistry.getOrCreateBook(symbol);
+bookRouter.delete(
+  "/books/:symbol/orders/:orderId",
+  async (request, response, next) => {
+    try {
+      const { symbol, orderId } = request.params;
 
-  const result = book.placeTrailingStopMarketOrder({
-    orderId,
-    userId,
-    side,
-    trailingAmountTicks,
-    quantity,
-    timestamp,
-  });
+      const command = createOrderCommand({
+        type: OrderCommandType.CANCEL_ORDER,
+        symbol,
+        payload: {
+          orderId,
+        },
+      });
 
-  broadcastDomainEvents(symbol, result.events);
+      await orderCommandBus.publish(command);
 
-  response.status(201).json({
-    success: true,
-    data: result,
-  });
-});
-
-bookRouter.delete("/books/:symbol/orders/:orderId", (request, response) => {
-  const { symbol, orderId } = request.params;
-
-  const book = bookRegistry.getOrCreateBook(symbol);
-
-  const result = book.cancelOrder(orderId);
-
-  broadcastDomainEvents(symbol, result.events);
-
-  response.json({
-    success: true,
-    data: result,
-  });
-});
+      response.status(202).json(
+        createQueuedResponse(command, {
+          orderId,
+        }),
+      );
+    } catch (error) {
+      next(error);
+    }
+  },
+);
