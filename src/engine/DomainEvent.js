@@ -8,6 +8,7 @@ export const DomainEventType = Object.freeze({
   STOP_ORDER_ACCEPTED: "STOP_ORDER_ACCEPTED",
   STOP_ORDER_TRIGGERED: "STOP_ORDER_TRIGGERED",
   BOOK_UPDATED: "BOOK_UPDATED",
+  ORDER_REJECTED:"ORDER_REJECTED"
 });
 
 export function createOrderAcceptedEvent(order) {
@@ -136,6 +137,24 @@ export function createBookUpdatedEvent(snapshot) {
   return {
     type: DomainEventType.BOOK_UPDATED,
     snapshot,
+    timestamp: Date.now(),
+  };
+}
+
+export function createOrderRejectedEvent({
+  symbol,
+  commandId,
+  orderId,
+  commandType,
+  reason,
+}) {
+  return {
+    type: DomainEventType.ORDER_REJECTED,
+    symbol,
+    commandId,
+    orderId,
+    commandType,
+    reason,
     timestamp: Date.now(),
   };
 }

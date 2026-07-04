@@ -3,6 +3,7 @@ import { bookRegistry } from "../api/services/BookRegistry.js";
 import { broadcastDomainEvents } from "../api/websocket/socketServer.js";
 import { connectRabbitMQ } from "../infrastructure/rabbitmq/rabbitConnection.js";
 import { RabbitQueue } from "../infrastructure/rabbitmq/rabbitConfig.js";
+import { createOrderRejectedEvent } from "../engine/DomainEvent.js";
 
 function parseMessage(message) {
   return JSON.parse(message.content.toString("utf8"));
@@ -29,8 +30,8 @@ function executeOrderCommand(command) {
     case OrderCommandType.PLACE_TRAILING_STOP_MARKET_ORDER:
       return book.placeTrailingStopMarketOrder(payload);
 
-     case OrderCommandType.CANCEL_ORDER:
-  return book.cancelOrder(payload.orderId);
+    case OrderCommandType.CANCEL_ORDER:
+      return book.cancelOrder(payload.orderId);
 
     default:
       throw new Error(`unsupported order command type: ${type}`);
@@ -65,7 +66,25 @@ export async function startOrderCommandWorker() {
       } catch (error) {
         console.error("Order command failed:", error);
 
-        channel.nack(message, false, false);
+        try {
+          const command = parseMessage(message);
+
+          const rejectedEvent = createOrderRejectedEvent({
+            symbol: command.symbol,
+            commandId: command.commandId,
+            orderId: command.payload?.orderId ?? null,
+            commandType: command.type,
+            reason: error.message,
+          });
+
+          broadcastDomainEvents(command.symbol, [rejectedEvent]);
+
+          channel.ack(message);
+        } catch (rejectionError) {
+          console.error("Failed to create rejection event:", rejectionError);
+
+          channel.nack(message, false, false);
+        }
       }
     },
     {
