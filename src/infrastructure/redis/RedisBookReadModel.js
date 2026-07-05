@@ -1,21 +1,24 @@
 import { connectRedis } from "./redisConnection.js";
 
+const DEFAULT_RECENT_TRADES_LIMIT = 1000;
+
 function bookSnapshotKey(symbol) {
   return `book:${symbol}:snapshot`;
 }
 
-function tradeHistoryKey(symbol) {
-  return `book:${symbol}:trades`;
+function recentTradesKey(symbol) {
+  return `book:${symbol}:recent-trades`;
 }
 
 export class RedisBookReadModel {
+  constructor({ recentTradesLimit = DEFAULT_RECENT_TRADES_LIMIT } = {}) {
+    this.recentTradesLimit = recentTradesLimit;
+  }
+
   async saveSnapshot(symbol, snapshot) {
     const redis = await connectRedis();
 
-    await redis.set(
-      bookSnapshotKey(symbol),
-      JSON.stringify(snapshot),
-    );
+    await redis.set(bookSnapshotKey(symbol), JSON.stringify(snapshot));
   }
 
   async getSnapshot(symbol) {
@@ -30,25 +33,30 @@ export class RedisBookReadModel {
     return JSON.parse(rawSnapshot);
   }
 
-  async saveTrades(symbol, trades) {
-    const redis = await connectRedis();
-
-    await redis.set(
-      tradeHistoryKey(symbol),
-      JSON.stringify(trades),
-    );
-  }
-
-  async getTrades(symbol) {
-    const redis = await connectRedis();
-
-    const rawTrades = await redis.get(tradeHistoryKey(symbol));
-
-    if (!rawTrades) {
-      return [];
+  async appendTrades(symbol, trades = []) {
+    if (trades.length === 0) {
+      return;
     }
 
-    return JSON.parse(rawTrades);
+    const redis = await connectRedis();
+    const key = recentTradesKey(symbol);
+
+    const serializedTrades = trades.map((trade) => JSON.stringify(trade));
+
+    await redis.lPush(key, serializedTrades);
+    await redis.lTrim(key, 0, this.recentTradesLimit - 1);
+  }
+
+  async getTrades(symbol, limit = 100) {
+    const redis = await connectRedis();
+
+    const rawTrades = await redis.lRange(
+      recentTradesKey(symbol),
+      0,
+      limit - 1,
+    );
+
+    return rawTrades.map((rawTrade) => JSON.parse(rawTrade));
   }
 }
 

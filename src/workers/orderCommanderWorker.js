@@ -70,13 +70,11 @@ function executeOrderCommand(command) {
       throw new Error(`unsupported order command type: ${type}`);
   }
 }
-
-async function saveReadModel(symbol, book) {
-  
+async function saveReadModel(symbol, book, result) {
   const snapshot = book.snapshot();
 
   await redisBookReadModel.saveSnapshot(symbol, snapshot);
-  await redisBookReadModel.saveTrades(symbol, book.trades);
+  await redisBookReadModel.appendTrades(symbol, result.trades ?? []);
 }
 
 export async function startOrderCommandWorker() {
@@ -95,8 +93,7 @@ export async function startOrderCommandWorker() {
         const command = parseMessage(message);
 
         const {book,result} = executeOrderCommand(command);
-
-        await saveReadModel(command.symbol, book);
+        await saveReadModel(command.symbol, book, result);
 
         await updateCommandStatus(command, CommandStatus.PROCESSED);
 
