@@ -28,8 +28,37 @@ export class OrderBook {
 
     this.trades = [];
     this.lastTradePriceTicks = null;
+    this.sequence = 0;
   }
+  
+  nextSequence() {
+  this.sequence += 1;
+  return this.sequence;
+}
 
+stampEvents(events = []) {
+  return events.map((event) => {
+    const sequence = this.nextSequence();
+
+    if (event.type === "BOOK_UPDATED" && event.snapshot) {
+      return {
+        ...event,
+        symbol: event.symbol ?? this.symbol,
+        sequence,
+        snapshot: {
+          ...event.snapshot,
+          sequence,
+        },
+      };
+    }
+
+    return {
+      ...event,
+      symbol: event.symbol ?? this.symbol,
+      sequence,
+    };
+  });
+}
   placeLimitOrder({
     orderId,
     userId,
@@ -72,11 +101,13 @@ export class OrderBook {
 
     events.push(createBookUpdatedEvent(this.snapshot()));
 
+    const allEvents =[...events,...(triggered.events ?? [])]
+
     return {
       order: incomingOrder.snapshot(),
       trades: [...trades, ...triggered.trades],
       triggeredOrders: triggered.orders,
-      events: [...events, ...(triggered.events ?? [])]
+      events: this.stampEvents(allEvents)
     };
   }
 
@@ -134,10 +165,10 @@ export class OrderBook {
       order: orderSnapshot,
       trades: [],
       triggeredOrders: [],
-      events: [
+      events: this.stampEvents( [
         createStopOrderAcceptedEvent(orderSnapshot),
         createBookUpdatedEvent(this.snapshot()),
-      ],
+      ])
     };
   }
 
@@ -185,8 +216,8 @@ export class OrderBook {
         order: incomingOrder.snapshot(),
         trades: [...trades, ...triggered.trades],
         triggeredOrders: triggered.orders,
-        events
-      };
+        events:this.stampEvents(events)
+      }; 
     }
 
     placeStopMarketOrder({
@@ -221,10 +252,10 @@ export class OrderBook {
         order: orderSnapshot,
         trades: [],
         triggeredOrders: [],
-        events: [
+        events: this.stampEvents([
           createStopOrderAcceptedEvent(orderSnapshot),
           createBookUpdatedEvent(this.snapshot()),
-        ],
+        ])
       };
     }
 
@@ -261,10 +292,10 @@ export class OrderBook {
         order: orderSnapshot,
         trades: [],
         triggeredOrders: [],
-        events: [
+        events: this.stampEvents([
           createStopOrderAcceptedEvent(orderSnapshot),
           createBookUpdatedEvent(this.snapshot()),
-        ],
+        ]) 
       };
     }
 
@@ -630,10 +661,10 @@ export class OrderBook {
   return {
     ...orderSnapshot,
     order: orderSnapshot,
-    events: [
+    events: this.stampEvents([
       createOrderCancelledEvent(orderSnapshot),
       createBookUpdatedEvent(this.snapshot()),
-    ],
+    ])
   };
 }
 
@@ -662,6 +693,7 @@ export class OrderBook {
     snapshot() {
       return {
         symbol: this.symbol,
+        sequence:this.sequence,
         bestBidPriceTicks: this.getBestBidPriceTicks(),
         bestAskPriceTicks: this.getBestAskPriceTicks(),
         lastTradePriceTicks: this.lastTradePriceTicks,
