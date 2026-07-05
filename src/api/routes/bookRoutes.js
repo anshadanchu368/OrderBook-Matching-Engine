@@ -1,8 +1,10 @@
 import express from "express";
 import { randomUUID } from "node:crypto";
+
 import { bookRegistry } from "../services/BookRegistry.js";
 import { orderCommandBus } from "../../application/commands/orderCommandBus.js";
 import { OrderCommandType } from "../../application/commands/OrderCommandTypes.js";
+import { redisBookReadModel } from "../../infrastructure/redis/RedisBookReadModel.js";
 
 export const bookRouter = express.Router();
 
@@ -38,29 +40,63 @@ bookRouter.get("/symbols", (request, response) => {
   });
 });
 
-bookRouter.get("/books/:symbol", (request, response) => {
-  const { symbol } = request.params;
+bookRouter.get("/books/:symbol", async (request, response, next) => {
+  try {
+    const { symbol } = request.params;
 
-  const book = bookRegistry.getOrCreateBook(symbol);
+    const redisSnapshot = await redisBookReadModel.getSnapshot(symbol);
 
-  response.json({
-    success: true,
-    data: book.snapshot(),
-  });
+    if (redisSnapshot) {
+      return response.json({
+        success: true,
+        source: "REDIS",
+        data: redisSnapshot,
+      });
+    }
+
+    const book = bookRegistry.getOrCreateBook(symbol);
+    const snapshot = book.snapshot();
+
+    return response.json({
+      success: true,
+      source: "MEMORY",
+      data: snapshot,
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
-bookRouter.get("/books/:symbol/trades", (request, response) => {
-  const { symbol } = request.params;
+bookRouter.get("/books/:symbol/trades", async (request, response, next) => {
+  try {
+    const { symbol } = request.params;
 
-  const book = bookRegistry.getOrCreateBook(symbol);
+    const redisTrades = await redisBookReadModel.getTrades(symbol);
 
-  response.json({
-    success: true,
-    data: {
-      symbol,
-      trades: book.trades,
-    },
-  });
+    if (redisTrades.length > 0) {
+      return response.json({
+        success: true,
+        source: "REDIS",
+        data: {
+          symbol,
+          trades: redisTrades,
+        },
+      });
+    }
+
+    const book = bookRegistry.getOrCreateBook(symbol);
+
+    return response.json({
+      success: true,
+      source: "MEMORY",
+      data: {
+        symbol,
+        trades: book.trades,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 bookRouter.post("/books/:symbol/orders/limit", async (request, response, next) => {
@@ -84,13 +120,13 @@ bookRouter.post("/books/:symbol/orders/limit", async (request, response, next) =
 
     await orderCommandBus.publish(command);
 
-    response.status(202).json(
+    return response.status(202).json(
       createQueuedResponse(command, {
         orderId,
       }),
     );
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
@@ -113,13 +149,13 @@ bookRouter.post("/books/:symbol/orders/market", async (request, response, next) 
 
     await orderCommandBus.publish(command);
 
-    response.status(202).json(
+    return response.status(202).json(
       createQueuedResponse(command, {
         orderId,
       }),
     );
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
@@ -146,13 +182,13 @@ bookRouter.post(
 
       await orderCommandBus.publish(command);
 
-      response.status(202).json(
+      return response.status(202).json(
         createQueuedResponse(command, {
           orderId,
         }),
       );
     } catch (error) {
-      next(error);
+      return next(error);
     }
   },
 );
@@ -188,16 +224,17 @@ bookRouter.post(
 
       await orderCommandBus.publish(command);
 
-      response.status(202).json(
+      return response.status(202).json(
         createQueuedResponse(command, {
           orderId,
         }),
       );
     } catch (error) {
-      next(error);
+      return next(error);
     }
   },
 );
+
 bookRouter.post(
   "/books/:symbol/orders/trailing-stop-market",
   async (request, response, next) => {
@@ -221,13 +258,13 @@ bookRouter.post(
 
       await orderCommandBus.publish(command);
 
-      response.status(202).json(
+      return response.status(202).json(
         createQueuedResponse(command, {
           orderId,
         }),
       );
     } catch (error) {
-      next(error);
+      return next(error);
     }
   },
 );
@@ -248,13 +285,13 @@ bookRouter.delete(
 
       await orderCommandBus.publish(command);
 
-      response.status(202).json(
+      return response.status(202).json(
         createQueuedResponse(command, {
           orderId,
         }),
       );
     } catch (error) {
-      next(error);
+      return next(error);
     }
   },
 );
