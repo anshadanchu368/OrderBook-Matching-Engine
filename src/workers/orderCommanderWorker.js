@@ -5,9 +5,24 @@ import { connectRabbitMQ } from "../infrastructure/rabbitmq/rabbitConnection.js"
 import { RabbitQueue } from "../infrastructure/rabbitmq/rabbitConfig.js";
 import { createOrderRejectedEvent } from "../engine/DomainEvent.js";
 import { redisBookReadModel } from "../infrastructure/redis/RedisBookReadModel.js";
+import { redisCommandStatusStore } from "../infrastructure/redis/RedisCommandStatusStore.js";
+import { CommandStatus } from "../application/commands/CommandStatus.js";
 
 function parseMessage(message) {
   return JSON.parse(message.content.toString("utf8"));
+}
+
+async function updateCommandStatus(command, status, reason = null) {
+
+  await redisCommandStatusStore.saveStatus({
+    commandId: command.commandId,
+    symbol: command.symbol,
+    type: command.type,
+    status,
+    reason,
+    createdAt: command.createdAt,
+    updatedAt: Date.now()
+  });
 }
 
 function executeOrderCommand(command) {
@@ -83,6 +98,8 @@ export async function startOrderCommandWorker() {
 
         await saveReadModel(command.symbol, book);
 
+        await updateCommandStatus(command, CommandStatus.PROCESSED);
+
         broadcastDomainEvents(command.symbol, result.events ?? []);
 
         channel.ack(message);
@@ -104,7 +121,7 @@ export async function startOrderCommandWorker() {
             commandType: command.type,
             reason: error.message,
           });
-
+          await updateCommandStatus(command, CommandStatus.REJECTED, error.message);
           broadcastDomainEvents(command.symbol, [rejectedEvent]);
 
           channel.ack(message);

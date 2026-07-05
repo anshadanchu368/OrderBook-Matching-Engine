@@ -5,6 +5,8 @@ import { bookRegistry } from "../services/BookRegistry.js";
 import { orderCommandBus } from "../../application/commands/orderCommandBus.js";
 import { OrderCommandType } from "../../application/commands/OrderCommandTypes.js";
 import { redisBookReadModel } from "../../infrastructure/redis/RedisBookReadModel.js";
+import { redisCommandStatusStore } from "../../infrastructure/redis/RedisCommandStatusStore.js";
+import { CommandStatus } from "../../application/commands/CommandStatus.js";
 
 export const bookRouter = express.Router();
 
@@ -29,6 +31,20 @@ function createQueuedResponse(command, extraData = {}) {
       ...extraData,
     },
   };
+}
+
+async function saveQueuedCommandStatus(command) {
+  const now = Date.now();
+
+  await redisCommandStatusStore.saveStatus({
+    commandId: command.commandId,
+    symbol: command.symbol,
+    type: command.type,
+    status: CommandStatus.QUEUED,
+    reason: null,
+    createdAt: command.createdAt ?? now,
+    updatedAt: now,
+  });
 }
 
 bookRouter.get("/symbols", (request, response) => {
@@ -118,6 +134,7 @@ bookRouter.post("/books/:symbol/orders/limit", async (request, response, next) =
       },
     });
 
+    await saveQueuedCommandStatus(command);
     await orderCommandBus.publish(command);
 
     return response.status(202).json(
@@ -147,6 +164,8 @@ bookRouter.post("/books/:symbol/orders/market", async (request, response, next) 
       },
     });
 
+    await saveQueuedCommandStatus(command);
+    
     await orderCommandBus.publish(command);
 
     return response.status(202).json(
@@ -180,6 +199,7 @@ bookRouter.post(
         },
       });
 
+       await saveQueuedCommandStatus(command);
       await orderCommandBus.publish(command);
 
       return response.status(202).json(
@@ -221,7 +241,8 @@ bookRouter.post(
           timestamp,
         },
       });
-
+      
+      await saveQueuedCommandStatus(command);
       await orderCommandBus.publish(command);
 
       return response.status(202).json(
@@ -255,6 +276,7 @@ bookRouter.post(
           timestamp,
         },
       });
+    await saveQueuedCommandStatus(command);
 
       await orderCommandBus.publish(command);
 
@@ -283,6 +305,7 @@ bookRouter.delete(
         },
       });
 
+      await saveQueuedCommandStatus(command);
       await orderCommandBus.publish(command);
 
       return response.status(202).json(
@@ -295,3 +318,4 @@ bookRouter.delete(
     }
   },
 );
+
