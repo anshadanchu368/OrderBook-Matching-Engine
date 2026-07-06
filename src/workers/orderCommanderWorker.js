@@ -9,6 +9,7 @@ import { redisCommandStatusStore } from "../infrastructure/redis/RedisCommandSta
 import { CommandStatus } from "../application/commands/CommandStatus.js";
 import { redisEventLog } from "../infrastructure/redis/RedisEventLog.js";
 import { redisCommandLog } from "../infrastructure/redis/RedisCommandLog.js";
+import { executeOrderCommand } from "../application/commands/executeOrderCommand.js";
 
 function parseMessage(message) {
   return JSON.parse(message.content.toString("utf8"));
@@ -27,51 +28,7 @@ async function updateCommandStatus(command, status, reason = null) {
   });
 }
 
-function executeOrderCommand(command) {
-  const { type, symbol, payload } = command;
-  const book = bookRegistry.getOrCreateBook(symbol);
 
-  switch (type) {
-    case OrderCommandType.PLACE_LIMIT_ORDER:
-      return {
-        book,
-        result: book.placeLimitOrder(payload),
-      };
-
-    case OrderCommandType.PLACE_MARKET_ORDER:
-      return {
-        book,
-        result: book.placeMarketOrder(payload),
-      };
-
-    case OrderCommandType.PLACE_STOP_MARKET_ORDER:
-      return {
-        book,
-        result: book.placeStopMarketOrder(payload),
-      };
-
-    case OrderCommandType.PLACE_STOP_LIMIT_ORDER:
-      return {
-        book,
-        result: book.placeStopLimitOrder(payload),
-      };
-
-    case OrderCommandType.PLACE_TRAILING_STOP_MARKET_ORDER:
-      return {
-        book,
-        result: book.placeTrailingStopMarketOrder(payload),
-      };
-
-    case OrderCommandType.CANCEL_ORDER:
-      return {
-        book,
-        result: book.cancelOrder(payload.orderId),
-      };
-
-    default:
-      throw new Error(`unsupported order command type: ${type}`);
-  }
-}
 async function saveReadModel(symbol, book, result) {
   const snapshot = book.snapshot();
 

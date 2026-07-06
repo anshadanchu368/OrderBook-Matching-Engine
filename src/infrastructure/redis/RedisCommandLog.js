@@ -1,6 +1,8 @@
 import { connectRedis } from "./redisConnection.js";
 
 const DEFAULT_MAX_COMMANDS_PER_SYMBOL = 100_000;
+const COMMAND_LOG_SYMBOLS_KEY = "commands:symbols";
+
 
 function commandStreamKey(symbol) {
   return `stream:${symbol}:commands`;
@@ -49,9 +51,16 @@ export class RedisCommandLog {
     );
 
     pipeline.sAdd(idsKey, command.commandId);
+    pipeline.sAdd(COMMAND_LOG_SYMBOLS_KEY, command.symbol);
 
     await pipeline.exec();
   }
+  
+  async getSymbols() {
+  const redis = await connectRedis();
+
+  return redis.sMembers(COMMAND_LOG_SYMBOLS_KEY);
+}
 
   async isCommandProcessed(symbol, commandId) {
     const redis = await connectRedis();
