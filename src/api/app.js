@@ -7,6 +7,7 @@ import { bookRouter } from "./routes/bookRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { notFoundHandler } from "./middleware/notFoundHandler.js";
 import { commandRouter } from "./routes/commandRoutes.js";
+import { eventRouter } from "./routes/eventRoutes.js";
 
 export function createApp() {
   const app = express();
@@ -27,7 +28,8 @@ export function createApp() {
   });
 
   app.use("/api/v1", bookRouter);
-  app.use("/api/v1",commandRouter)
+  app.use("/api/v1",commandRouter);
+  app.use("/api/v1", eventRouter);
   
   app.use(notFoundHandler);
   app.use(errorHandler);

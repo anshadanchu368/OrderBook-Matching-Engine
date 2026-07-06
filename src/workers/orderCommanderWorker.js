@@ -7,6 +7,7 @@ import { createOrderRejectedEvent } from "../engine/DomainEvent.js";
 import { redisBookReadModel } from "../infrastructure/redis/RedisBookReadModel.js";
 import { redisCommandStatusStore } from "../infrastructure/redis/RedisCommandStatusStore.js";
 import { CommandStatus } from "../application/commands/CommandStatus.js";
+import { redisEventLog } from "../infrastructure/redis/RedisEventLog.js";
 
 function parseMessage(message) {
   return JSON.parse(message.content.toString("utf8"));
@@ -93,6 +94,9 @@ export async function startOrderCommandWorker() {
         const command = parseMessage(message);
 
         const {book,result} = executeOrderCommand(command);
+
+        await redisEventLog.appendEvents(command.symbol, result.events ?? []);
+
         await saveReadModel(command.symbol, book, result);
 
         await updateCommandStatus(command, CommandStatus.PROCESSED);
