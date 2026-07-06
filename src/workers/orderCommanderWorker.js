@@ -8,6 +8,7 @@ import { redisBookReadModel } from "../infrastructure/redis/RedisBookReadModel.j
 import { redisCommandStatusStore } from "../infrastructure/redis/RedisCommandStatusStore.js";
 import { CommandStatus } from "../application/commands/CommandStatus.js";
 import { redisEventLog } from "../infrastructure/redis/RedisEventLog.js";
+import { redisCommandLog } from "../infrastructure/redis/RedisCommandLog.js";
 
 function parseMessage(message) {
   return JSON.parse(message.content.toString("utf8"));
@@ -93,8 +94,19 @@ export async function startOrderCommandWorker() {
       try {
         const command = parseMessage(message);
 
-        const {book,result} = executeOrderCommand(command);
+        const alreadyProcessed = await redisCommandLog.isCommandProcessed(
+          command.symbol,
+          command.commandId,
+        );
 
+        if (alreadyProcessed) {
+          await updateCommandStatus(command, CommandStatus.PROCESSED);
+          channel.ack(message);
+          return;
+        }
+
+        const { book, result } = executeOrderCommand(command);
+        await redisCommandLog.appendProcessedCommand(command);
         await redisEventLog.appendEvents(command.symbol, result.events ?? []);
 
         await saveReadModel(command.symbol, book, result);
