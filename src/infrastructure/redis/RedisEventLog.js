@@ -19,6 +19,7 @@ export class RedisEventLog {
     const redis = await connectRedis();
     const key = eventStreamKey(symbol);
 
+    const pipeline =redis.multi()
     for (const event of events) {
       await redis.xAdd(
         key,
@@ -38,6 +39,8 @@ export class RedisEventLog {
         },
       );
     }
+
+    await pipeline.exec()
   }
 
   async getEvents(symbol, { start = "-", end = "+", count = 100 } = {}) {
