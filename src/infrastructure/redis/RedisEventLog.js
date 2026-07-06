@@ -21,7 +21,7 @@ export class RedisEventLog {
 
     const pipeline =redis.multi()
     for (const event of events) {
-      await redis.xAdd(
+      await pipeline.xAdd(
         key,
         "*",
         {
