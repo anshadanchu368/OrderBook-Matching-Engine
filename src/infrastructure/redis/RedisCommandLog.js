@@ -56,7 +56,7 @@ export class RedisCommandLog {
    const results = await pipeline.exec();
    return results[0]
   }
-  
+
   async getSymbols() {
   const redis = await connectRedis();
 
