@@ -24,7 +24,8 @@ httpServer.listen(PORT, async () => {
   console.log(`LOB API server running on port ${PORT}`);
 
   try {
-    await replayAllSymbolsFromCommandLog({ reset: true });
+    const recoveryResults = await replayAllSymbolsFromCommandLog({ reset: true });
+
     await startOrderCommandWorker();
   } catch (error) {
     console.error("Failed to start order command worker:", error);

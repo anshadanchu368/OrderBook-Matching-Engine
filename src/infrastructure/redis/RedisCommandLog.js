@@ -4,7 +4,7 @@ const DEFAULT_MAX_COMMANDS_PER_SYMBOL = 100_000;
 const COMMAND_LOG_SYMBOLS_KEY = "commands:symbols";
 
 
-function commandStreamKey(symbol) {
+function commandLogStreamKey(symbol) {
   return `stream:${symbol}:commands`;
 }
 
@@ -21,7 +21,7 @@ export class RedisCommandLog {
     const redis = await connectRedis();
 
     const processedAt = Date.now();
-    const streamKey = commandStreamKey(command.symbol);
+    const streamKey = commandLogStreamKey(command.symbol);
     const idsKey = processedCommandIdsKey(command.symbol);
 
     const pipeline = redis.multi();
@@ -72,7 +72,7 @@ export class RedisCommandLog {
   async getProcessedCommands(symbol, { start = "-", end = "+", count = 100 } = {}) {
     const redis = await connectRedis();
 
-    const entries = await redis.xRange(commandStreamKey(symbol), start, end, {
+    const entries = await redis.xRange(commandLogStreamKey(symbol), start, end, {
       COUNT: count,
     });
 
@@ -82,10 +82,25 @@ export class RedisCommandLog {
     }));
   }
 
+  async getProcessedCommandsAfter(symbol, streamId, { count = 100_000 } = {}) {
+  const redis = await connectRedis();
+
+  const streamKey = commandLogStreamKey(symbol);
+
+  const entries = await redis.xRange(streamKey, `(${streamId}`, "+", {
+    COUNT: count,
+  });
+
+  return entries.map((entry) => ({
+    id: entry.id,
+    command: JSON.parse(entry.message.command),
+  }));
+}
+
   async getCommandCount(symbol) {
     const redis = await connectRedis();
 
-    return redis.xLen(commandStreamKey(symbol));
+    return redis.xLen(commandLogStreamKey(symbol));
   }
 }
 

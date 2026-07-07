@@ -25,6 +25,16 @@ export class BookRegistry {
     return [...this.booksBySymbol.keys()];
   }
 
+  setBook(symbol, book) {
+    this.validateSymbol(symbol);
+
+    if (!(book instanceof OrderBook)) {
+      throw new Error("book must be an OrderBook instance");
+    }
+
+    this.booksBySymbol.set(symbol, book);
+  }
+
   validateSymbol(symbol) {
     if (typeof symbol !== "string" || symbol.trim() === "") {
       throw new Error("symbol must be a non-empty string");
@@ -32,8 +42,8 @@ export class BookRegistry {
   }
 
   reset() {
-  this.booksBySymbol.clear();
-}
+    this.booksBySymbol.clear();
+  }
 }
 
 export const bookRegistry = new BookRegistry();

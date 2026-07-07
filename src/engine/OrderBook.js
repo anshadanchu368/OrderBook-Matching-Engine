@@ -735,6 +735,51 @@ getBookSideRecoverySnapshot(bookSide, side) {
     return a.priceTicks - b.priceTicks;
   });
 }
+
+static fromRecoverySnapshot(snapshot) {
+  const book = new OrderBook(snapshot.symbol);
+
+  book.sequence = snapshot.sequence ?? 0;
+  book.lastTradePriceTicks = snapshot.lastTradePriceTicks ?? null;
+
+  book.restoreBookSideFromRecoverySnapshot(book.bids, snapshot.bids ?? []);
+  book.restoreBookSideFromRecoverySnapshot(book.asks, snapshot.asks ?? []);
+
+  for (const stopOrderSnapshot of snapshot.stopOrders ?? []) {
+    book.stopOrdersById.set(stopOrderSnapshot.orderId, {
+      ...stopOrderSnapshot,
+    });
+  }
+
+  return book;
+}
+
+restoreBookSideFromRecoverySnapshot(bookSide, levels) {
+  for (const levelSnapshot of levels) {
+    const priceLevel = new PriceLevel(levelSnapshot.priceTicks);
+
+    for (const orderSnapshot of levelSnapshot.orders ?? []) {
+      if (!orderSnapshot.remainingQuantity || orderSnapshot.remainingQuantity <= 0) {
+        continue;
+      }
+
+      const orderNode = new OrderNode({
+        ...orderSnapshot,
+        quantity: orderSnapshot.initialQuantity ?? orderSnapshot.remainingQuantity,
+      });
+
+      orderNode.remainingQuantity = orderSnapshot.remainingQuantity;
+      orderNode.status = orderSnapshot.status;
+
+      priceLevel.append(orderNode);
+      this.ordersById.set(orderNode.orderId, orderNode);
+    }
+
+    if (priceLevel.orderCount > 0) {
+      bookSide.set(priceLevel.priceTicks, priceLevel);
+    }
+  }
+}
     getStopOrderSnapshot(order) {
       return {
         orderId: order.orderId,
