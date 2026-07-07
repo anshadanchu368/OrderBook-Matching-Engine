@@ -53,7 +53,8 @@ export class RedisCommandLog {
     pipeline.sAdd(idsKey, command.commandId);
     pipeline.sAdd(COMMAND_LOG_SYMBOLS_KEY, command.symbol);
 
-    await pipeline.exec();
+   const results = await pipeline.exec();
+   return results[0]
   }
   
   async getSymbols() {

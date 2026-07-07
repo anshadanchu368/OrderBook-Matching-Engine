@@ -705,6 +705,36 @@ stampEvents(events = []) {
       };
     }
 
+    toRecoverySnapshot({ lastCommandStreamId = null } = {}) {
+  return {
+    symbol: this.symbol,
+    sequence: this.sequence,
+    lastTradePriceTicks: this.lastTradePriceTicks,
+    lastCommandStreamId,
+    bids: this.getBookSideRecoverySnapshot(this.bids, Side.BUY),
+    asks: this.getBookSideRecoverySnapshot(this.asks, Side.SELL),
+    stopOrders: [...this.stopOrdersById.values()].map((order) =>
+      this.getStopOrderSnapshot(order),
+    ),
+  };
+}
+
+getBookSideRecoverySnapshot(bookSide, side) {
+  const levels = [...bookSide.values()].map((level) => ({
+    priceTicks: level.priceTicks,
+    totalQuantity: level.totalQuantity,
+    orderCount: level.orderCount,
+    orders: level.toArray(),
+  }));
+
+  return levels.sort((a, b) => {
+    if (side === Side.BUY) {
+      return b.priceTicks - a.priceTicks;
+    }
+
+    return a.priceTicks - b.priceTicks;
+  });
+}
     getStopOrderSnapshot(order) {
       return {
         orderId: order.orderId,

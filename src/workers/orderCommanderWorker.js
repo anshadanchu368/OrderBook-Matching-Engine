@@ -10,6 +10,7 @@ import { CommandStatus } from "../application/commands/CommandStatus.js";
 import { redisEventLog } from "../infrastructure/redis/RedisEventLog.js";
 import { redisCommandLog } from "../infrastructure/redis/RedisCommandLog.js";
 import { executeOrderCommand } from "../application/commands/executeOrderCommand.js";
+import { redisRecoverySnapshotStore } from "../infrastructure/redis/RedisRecoverySnapshotStore.js";
 
 function parseMessage(message) {
   return JSON.parse(message.content.toString("utf8"));
@@ -63,10 +64,20 @@ export async function startOrderCommandWorker() {
         }
 
         const { book, result } = executeOrderCommand(command);
-        await redisCommandLog.appendProcessedCommand(command);
+
+        const commandLogEntryId = await redisCommandLog.appendProcessedCommand(command);
+
+
         await redisEventLog.appendEvents(command.symbol, result.events ?? []);
 
         await saveReadModel(command.symbol, book, result);
+
+        await redisRecoverySnapshotStore.saveSnapshot(
+          command.symbol,
+          book.toRecoverySnapshot({
+            lastCommandStreamId: commandLogEntryId,
+          })
+        )
 
         await updateCommandStatus(command, CommandStatus.PROCESSED);
 
