@@ -1,27 +1,39 @@
 import http from "http";
 import { Server } from "socket.io";
-import { initializeSocketServer } from "../api/websocket/socketServer.js";
+import {
+  broadcastDomainEvents,
+  initializeSocketServer,
+} from "../api/websocket/socketServer.js";
+import { subscribeToMarketEvents } from "../infrastructure/redis/RedisMarketEventPubSub.js";
 
 const port = process.env.WEBSOCKET_PORT ?? 3001;
 
-console.log("[websocket] starting");
+async function startWebSocketServer() {
+  console.log("[websocket] starting");
 
-const httpServer = http.createServer();
-const io = new Server(httpServer, {
-  cors: {
-    origin: "*",
-  },
-});
+  const httpServer = http.createServer();
+  const io = new Server(httpServer, {
+    cors: {
+      origin: "*",
+    },
+  });
 
-initializeSocketServer(io);
+  initializeSocketServer(io);
 
-// TODO: Subscribe to a Redis Pub/Sub market-event channel so events produced by
-// the matching-worker process can be forwarded to connected socket clients.
-httpServer.listen(port, () => {
+  await subscribeToMarketEvents((symbol, events) => {
+    broadcastDomainEvents(symbol, events);
+  });
+  console.log("[websocket] subscribed to redis market events");
+
+  await new Promise((resolve, reject) => {
+    httpServer.once("error", reject);
+    httpServer.listen(port, resolve);
+  });
+
   console.log(`[websocket] listening on port ${port}`);
-});
+}
 
-httpServer.once("error", (error) => {
+startWebSocketServer().catch((error) => {
   console.error("[websocket] failed to start", error);
   process.exit(1);
 });

@@ -1,6 +1,3 @@
-import { OrderCommandType } from "../application/commands/OrderCommandTypes.js";
-import { bookRegistry } from "../api/services/BookRegistry.js";
-import { broadcastDomainEvents } from "../api/websocket/socketServer.js";
 import { connectRabbitMQ } from "../infrastructure/rabbitmq/rabbitConnection.js";
 import { RabbitQueue } from "../infrastructure/rabbitmq/rabbitConfig.js";
 import { createOrderRejectedEvent } from "../engine/DomainEvent.js";
@@ -11,6 +8,7 @@ import { redisEventLog } from "../infrastructure/redis/RedisEventLog.js";
 import { redisCommandLog } from "../infrastructure/redis/RedisCommandLog.js";
 import { executeOrderCommand } from "../application/commands/executeOrderCommand.js";
 import { redisRecoverySnapshotStore } from "../infrastructure/redis/RedisRecoverySnapshotStore.js";
+import { publishMarketEvents } from "../infrastructure/redis/RedisMarketEventPubSub.js";
 
 function parseMessage(message) {
   return JSON.parse(message.content.toString("utf8"));
@@ -81,9 +79,9 @@ export async function startOrderCommandWorker() {
 
         await updateCommandStatus(command, CommandStatus.PROCESSED);
 
-        broadcastDomainEvents(command.symbol, result.events ?? []);
-
         channel.ack(message);
+
+        void publishMarketEvents(command.symbol, result.events ?? []);
 
         console.log(`Order command processed: ${command.type}`, {
           commandId: command.commandId,
@@ -103,9 +101,10 @@ export async function startOrderCommandWorker() {
             reason: error.message,
           });
           await updateCommandStatus(command, CommandStatus.REJECTED, error.message);
-          broadcastDomainEvents(command.symbol, [rejectedEvent]);
 
           channel.ack(message);
+
+          void publishMarketEvents(command.symbol, [rejectedEvent]);
         } catch (rejectionError) {
           console.error("Failed to create rejection event:", rejectionError);
 
