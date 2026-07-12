@@ -1,6 +1,7 @@
 import { connectRedis } from "./redisConnection.js";
 
 const DEFAULT_RECENT_TRADES_LIMIT = 1000;
+const BOOK_SYMBOLS_KEY = "books:symbols";
 
 function bookSnapshotKey(symbol) {
   return `book:${symbol}:snapshot`;
@@ -18,7 +19,16 @@ export class RedisBookReadModel {
   async saveSnapshot(symbol, snapshot) {
     const redis = await connectRedis();
 
-    await redis.set(bookSnapshotKey(symbol), JSON.stringify(snapshot));
+    await Promise.all([
+      redis.set(bookSnapshotKey(symbol), JSON.stringify(snapshot)),
+      redis.sAdd(BOOK_SYMBOLS_KEY, symbol),
+    ]);
+  }
+
+  async getSymbols() {
+    const redis = await connectRedis();
+
+    return (await redis.sMembers(BOOK_SYMBOLS_KEY)).sort();
   }
 
   async getSnapshot(symbol) {

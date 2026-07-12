@@ -1,19 +1,50 @@
 services:
-  app:
+  api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: lob-engine-dev
+    container_name: lob-api-dev
     working_dir: /app
     volumes:
       - .:/app
       - lob_node_modules:/app/node_modules
     ports:
       - "3000:3000"
-    command: npm run start
+    command: npm run start:api
     environment:
       NODE_ENV: development
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
+
+  matching-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lob-matching-worker-dev
+    working_dir: /app
+    volumes:
+      - .:/app
+      - lob_node_modules:/app/node_modules
+    command: npm run start:worker
+    environment:
+      NODE_ENV: development
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
+
+  websocket:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lob-websocket-dev
+    working_dir: /app
+    volumes:
+      - .:/app
+      - lob_node_modules:/app/node_modules
+    ports:
+      - "3001:3001"
+    command: npm run start:websocket
+    environment:
+      NODE_ENV: development
       REDIS_URL: redis://redis:6379
 
   rabbitmq:

@@ -1,34 +1,14 @@
-import http from "http";
-import {Server} from "socket.io"
 import { createApp } from "./app.js";
-import { initializeSocketServer } from "./websocket/socketServer.js";
-import { startOrderCommandWorker } from "../workers/orderCommanderWorker.js";
-import { replayAllSymbolsFromCommandLog } from "../application/recovery/replayCommand.js";
 
+export async function startApiServer({ port = process.env.PORT ?? 3000 } = {}) {
+  const app = createApp();
 
-const PORT = process.env.PORT ?? 3000;
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, () => {
+      console.log(`[api] listening on port ${port}`);
+      resolve(server);
+    });
 
-const app = createApp();
-
-const httpServer = http.createServer(app)
-
-const io =new Server(httpServer,{
-  cors:{
-    origin:"*"
-  }
-})
-
-initializeSocketServer(io);
-
-httpServer.listen(PORT, async () => {
-  console.log(`LOB API server running on port ${PORT}`);
-
-  try {
-    const recoveryResults = await replayAllSymbolsFromCommandLog({ reset: true });
-
-    await startOrderCommandWorker();
-  } catch (error) {
-    console.error("Failed to start order command worker:", error);
-    process.exit(1);
-  }
-});
+    server.once("error", reject);
+  });
+}

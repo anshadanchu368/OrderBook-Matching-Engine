@@ -4,8 +4,11 @@
   "description": "Docker-only Node.js development environment for an in-memory LOB matching engine",
   "type": "module",
   "scripts": {
-    "start": "node src/api/server.js",
-    "dev": "node --watch src/api/server.js",
+    "start": "node src/apps/api.js",
+    "start:api": "node src/apps/api.js",
+    "start:worker": "node src/apps/matchingWorker.js",
+    "start:websocket": "node src/apps/websocket.js",
+    "dev": "node --watch src/apps/api.js",
     "test": "node --test",
     "bench:record": "node scripts/benchmarking/record.js"
   },

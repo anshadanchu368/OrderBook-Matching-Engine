@@ -1,7 +1,6 @@
 import express from "express";
 import { randomUUID } from "node:crypto";
 
-import { bookRegistry } from "../services/BookRegistry.js";
 import { orderCommandBus } from "../../application/commands/orderCommandBus.js";
 import { OrderCommandType } from "../../application/commands/OrderCommandTypes.js";
 import { redisBookReadModel } from "../../infrastructure/redis/RedisBookReadModel.js";
@@ -47,13 +46,19 @@ async function saveQueuedCommandStatus(command) {
   });
 }
 
-bookRouter.get("/symbols", (request, response) => {
-  response.json({
-    success: true,
-    data: {
-      symbols: bookRegistry.listSymbols(),
-    },
-  });
+bookRouter.get("/symbols", async (request, response, next) => {
+  try {
+    const symbols = await redisBookReadModel.getSymbols();
+
+    return response.json({
+      success: true,
+      data: {
+        symbols,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 bookRouter.get("/books/:symbol", async (request, response, next) => {
@@ -62,21 +67,17 @@ bookRouter.get("/books/:symbol", async (request, response, next) => {
 
     const redisSnapshot = await redisBookReadModel.getSnapshot(symbol);
 
-    if (redisSnapshot) {
-      return response.json({
-        success: true,
-        source: "REDIS",
-        data: redisSnapshot,
+    if (!redisSnapshot) {
+      return response.status(404).json({
+        success: false,
+        error: `book snapshot not found for symbol: ${symbol}`,
       });
     }
 
-    const book = bookRegistry.getOrCreateBook(symbol);
-    const snapshot = book.snapshot();
-
     return response.json({
       success: true,
-      source: "MEMORY",
-      data: snapshot,
+      source: "REDIS",
+      data: redisSnapshot,
     });
   } catch (error) {
     return next(error);
@@ -89,25 +90,12 @@ bookRouter.get("/books/:symbol/trades", async (request, response, next) => {
 
     const redisTrades = await redisBookReadModel.getTrades(symbol);
 
-    if (redisTrades.length > 0) {
-      return response.json({
-        success: true,
-        source: "REDIS",
-        data: {
-          symbol,
-          trades: redisTrades,
-        },
-      });
-    }
-
-    const book = bookRegistry.getOrCreateBook(symbol);
-
     return response.json({
       success: true,
-      source: "MEMORY",
+      source: "REDIS",
       data: {
         symbol,
-        trades: book.trades,
+        trades: redisTrades,
       },
     });
   } catch (error) {
@@ -318,4 +306,3 @@ bookRouter.delete(
     }
   },
 );
-
