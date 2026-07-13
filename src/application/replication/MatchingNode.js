@@ -11,11 +11,25 @@ import {
 } from "../../infrastructure/redis/RedisLeaderElection.js";
 import { startOrderCommandWorker } from "../../workers/orderCommanderWorker.js";
 import { StandbyReplica } from "./StandbyReplica.js";
+import { assertValidPartitionConfig } from "../../application/partitioning/symbolPartitioner.js";
 
 export class MatchingNode {
-  constructor({ workerId = `${os.hostname()}:${randomUUID()}` } = {}) {
+  constructor({ 
+    workerId = `${os.hostname()}:${randomUUID()}`,
+    partitionId = parseInt(process.env.PARTITION_ID ?? "0", 10),
+    partitionCount = parseInt(process.env.PARTITION_COUNT ?? "1", 10),
+  } = {}) {
     this.workerId = workerId;
-    this.replica = new StandbyReplica();
+    this.partitionId = partitionId;
+    this.partitionCount = partitionCount;
+    
+    // Validate partition configuration
+    assertValidPartitionConfig({ partitionId: this.partitionId, partitionCount: this.partitionCount });
+    
+    this.replica = new StandbyReplica({ 
+      partitionId: this.partitionId, 
+      partitionCount: this.partitionCount 
+    });
     this.consumerHandle = null;
     this.heartbeatHandle = null;
     this.active = false;
@@ -25,7 +39,11 @@ export class MatchingNode {
   }
 
   async start() {
-    console.log("[matching-node] starting", { workerId: this.workerId });
+    console.log("[matching-node] starting", { 
+      workerId: this.workerId,
+      partitionId: this.partitionId,
+      partitionCount: this.partitionCount,
+    });
 
     await connectRedis();
     console.log("[matching-node] redis connected");
@@ -54,7 +72,7 @@ export class MatchingNode {
       return;
     }
 
-    const currentLeader = await getCurrentLeader();
+    const currentLeader = await getCurrentLeader(this.partitionId);
     if (currentLeader) {
       return;
     }
@@ -73,10 +91,10 @@ export class MatchingNode {
     console.log("[leader] attempting acquisition", { workerId: this.workerId });
 
     try {
-      const acquired = await tryAcquireLeadership(this.workerId);
+      const acquired = await tryAcquireLeadership(this.workerId, this.partitionId);
       if (!acquired) {
         console.log("[failover] promotion failed", {
-          leader: await getCurrentLeader(),
+          leader: await getCurrentLeader(this.partitionId),
         });
         return false;
       }
@@ -89,24 +107,30 @@ export class MatchingNode {
       // Renewal starts immediately so a long catch-up cannot let the lock expire.
       this.heartbeatHandle = startLeadershipHeartbeat(this.workerId, () =>
         this.handleLeadershipLost(),
+        this.partitionId,
       );
 
       const replayedCommandCount = await this.replica.catchUp();
       console.log("[standby] caught up", { replayedCommandCount });
 
-      if (!(await hasLeadership(this.workerId))) {
+      if (!(await hasLeadership(this.workerId, this.partitionId))) {
         throw new Error("leadership lost during promotion catch-up");
       }
 
-      await connectRabbitMQ();
+      await connectRabbitMQ({ 
+        partitionId: this.partitionId, 
+        partitionCount: this.partitionCount 
+      });
       this.consumerHandle = await startOrderCommandWorker({
-        hasLeadership: () => hasLeadership(this.workerId),
+        hasLeadership: () => hasLeadership(this.workerId, this.partitionId),
         onLeadershipLost: () => this.handleLeadershipLost(),
+        partitionId: this.partitionId,
+        partitionCount: this.partitionCount,
       });
 
       if (
         this.leadershipLostDuringTransition ||
-        !(await hasLeadership(this.workerId))
+        !(await hasLeadership(this.workerId, this.partitionId))
       ) {
         await this.consumerHandle.stop();
         this.consumerHandle = null;
@@ -122,7 +146,7 @@ export class MatchingNode {
       this.heartbeatHandle = null;
 
       try {
-        await releaseLeadership(this.workerId);
+        await releaseLeadership(this.workerId, this.partitionId);
       } catch (releaseError) {
         console.error("[leader] failed to release leadership", {
           message: releaseError.message,
@@ -177,7 +201,7 @@ export class MatchingNode {
     await this.replica.stop();
 
     try {
-      await releaseLeadership(this.workerId);
+      await releaseLeadership(this.workerId, this.partitionId);
     } catch (error) {
       console.error("[leader] failed to release leadership", {
         message: error.message,

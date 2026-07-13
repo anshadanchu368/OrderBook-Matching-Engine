@@ -6,3 +6,10 @@ export const RabbitQueue = Object.freeze({
 export const RabbitExchange = Object.freeze({
   ORDER_COMMANDS_DLX: "order.commands.dlx",
 });
+
+/**
+ * Get the queue name for a partition.
+ */
+export function getOrderCommandQueueName(partitionId) {
+  return `order.commands.partition.${partitionId}`;
+}

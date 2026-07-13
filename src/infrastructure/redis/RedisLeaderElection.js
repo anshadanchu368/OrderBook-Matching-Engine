@@ -4,6 +4,17 @@ export const LEADER_KEY = "matching:leader";
 export const LEADER_LOCK_TTL_MS = 5_000;
 export const LEADER_RENEW_INTERVAL_MS = 2_000;
 
+/**
+ * Get partition-specific leader key.
+ * If partitionId is not provided, returns global leader key for backward compatibility.
+ */
+function getLeaderKey(partitionId) {
+  if (typeof partitionId === "number") {
+    return `matching:leader:partition:${partitionId}`;
+  }
+  return LEADER_KEY;
+}
+
 const RENEW_SCRIPT = `
   if redis.call("GET", KEYS[1]) == ARGV[1] then
     return redis.call("PEXPIRE", KEYS[1], ARGV[2])
@@ -18,9 +29,10 @@ const RELEASE_SCRIPT = `
   return 0
 `;
 
-export async function tryAcquireLeadership(workerId) {
+export async function tryAcquireLeadership(workerId, partitionId) {
   const redis = await connectRedis();
-  const result = await redis.set(LEADER_KEY, workerId, {
+  const leaderKey = getLeaderKey(partitionId);
+  const result = await redis.set(leaderKey, workerId, {
     NX: true,
     PX: LEADER_LOCK_TTL_MS,
   });
@@ -28,36 +40,39 @@ export async function tryAcquireLeadership(workerId) {
   return result === "OK";
 }
 
-export async function renewLeadership(workerId) {
+export async function renewLeadership(workerId, partitionId) {
   const redis = await connectRedis();
+  const leaderKey = getLeaderKey(partitionId);
   const result = await redis.eval(RENEW_SCRIPT, {
-    keys: [LEADER_KEY],
+    keys: [leaderKey],
     arguments: [workerId, String(LEADER_LOCK_TTL_MS)],
   });
 
   return result === 1;
 }
 
-export async function releaseLeadership(workerId) {
+export async function releaseLeadership(workerId, partitionId) {
   const redis = await connectRedis();
+  const leaderKey = getLeaderKey(partitionId);
   const result = await redis.eval(RELEASE_SCRIPT, {
-    keys: [LEADER_KEY],
+    keys: [leaderKey],
     arguments: [workerId],
   });
 
   return result === 1;
 }
 
-export async function getCurrentLeader() {
+export async function getCurrentLeader(partitionId) {
   const redis = await connectRedis();
-  return redis.get(LEADER_KEY);
+  const leaderKey = getLeaderKey(partitionId);
+  return redis.get(leaderKey);
 }
 
-export async function hasLeadership(workerId) {
-  return (await getCurrentLeader()) === workerId;
+export async function hasLeadership(workerId, partitionId) {
+  return (await getCurrentLeader(partitionId)) === workerId;
 }
 
-export function startLeadershipHeartbeat(workerId, onLeadershipLost) {
+export function startLeadershipHeartbeat(workerId, onLeadershipLost, partitionId) {
   let stopped = false;
   let renewalInProgress = false;
 
@@ -69,7 +84,7 @@ export function startLeadershipHeartbeat(workerId, onLeadershipLost) {
     renewalInProgress = true;
 
     try {
-      const renewed = await renewLeadership(workerId);
+      const renewed = await renewLeadership(workerId, partitionId);
 
       if (!renewed) {
         console.error("[leader] renewal failed");

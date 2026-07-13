@@ -4,14 +4,21 @@ import {
   replayAllSymbolsFromCommandLog,
 } from "../recovery/replayCommand.js";
 import { executeOrderCommand } from "../commands/executeOrderCommand.js";
+import { isSymbolAssignedToPartition } from "../partitioning/symbolPartitioner.js";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export class StandbyReplica {
-  constructor({ pollIntervalMs = 500 } = {}) {
+  constructor({ 
+    pollIntervalMs = 500,
+    partitionId = 0,
+    partitionCount = 1,
+  } = {}) {
     this.pollIntervalMs = pollIntervalMs;
+    this.partitionId = partitionId;
+    this.partitionCount = partitionCount;
     this.lastReplayedStreamIds = new Map();
     this.running = false;
     this.loopPromise = null;
@@ -21,11 +28,14 @@ export class StandbyReplica {
     const recoveryResults = await replayAllSymbolsFromCommandLog({ reset: true });
     this.lastReplayedStreamIds.clear();
 
+    // Only track symbols assigned to this partition
     for (const result of recoveryResults) {
-      this.lastReplayedStreamIds.set(
-        result.symbol,
-        result.lastCommandStreamId,
-      );
+      if (isSymbolAssignedToPartition(result.symbol, this.partitionId, this.partitionCount)) {
+        this.lastReplayedStreamIds.set(
+          result.symbol,
+          result.lastCommandStreamId,
+        );
+      }
     }
 
     return recoveryResults;
@@ -37,6 +47,11 @@ export class StandbyReplica {
 
     for (const symbol of symbols) {
       if (this.lastReplayedStreamIds.has(symbol)) {
+        continue;
+      }
+
+      // Only discover symbols assigned to this partition
+      if (!isSymbolAssignedToPartition(symbol, this.partitionId, this.partitionCount)) {
         continue;
       }
 

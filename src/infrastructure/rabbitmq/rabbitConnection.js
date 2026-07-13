@@ -1,5 +1,5 @@
 import amqp from "amqplib";
-import { RabbitExchange, RabbitQueue } from "./rabbitConfig.js";
+import { RabbitExchange, RabbitQueue, getOrderCommandQueueName } from "./rabbitConfig.js";
 
 let connection = null;
 let channel = null;
@@ -8,7 +8,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function connectRabbitMQ({ retries = 10, delayMs = 2000 } = {}) {
+export async function connectRabbitMQ({ retries = 10, delayMs = 2000, partitionId, partitionCount } = {}) {
   if (channel) {
     return channel;
   }
@@ -42,11 +42,10 @@ export async function connectRabbitMQ({ retries = 10, delayMs = 2000 } = {}) {
         RabbitQueue.ORDER_COMMANDS_DLQ,
       );
 
-      await channel.assertQueue(RabbitQueue.ORDER_COMMANDS, {
-        durable: true,
-        deadLetterExchange: RabbitExchange.ORDER_COMMANDS_DLX,
-        deadLetterRoutingKey: RabbitQueue.ORDER_COMMANDS_DLQ,
-      });
+      // Assert partition queues if specified
+      if (typeof partitionId === "number" && typeof partitionCount === "number") {
+        await assertPartitionQueues(channel, partitionId, partitionCount);
+      }
 
       console.log("RabbitMQ connected and queues asserted");
 
@@ -68,6 +67,21 @@ export async function connectRabbitMQ({ retries = 10, delayMs = 2000 } = {}) {
   }
 
   throw lastError;
+}
+
+/**
+ * Assert all partition queues up to partitionCount.
+ * Called during connection setup for workers/API.
+ */
+async function assertPartitionQueues(channel, partitionId, partitionCount) {
+  for (let i = 0; i < partitionCount; i++) {
+    const queueName = getOrderCommandQueueName(i);
+    await channel.assertQueue(queueName, {
+      durable: true,
+      deadLetterExchange: RabbitExchange.ORDER_COMMANDS_DLX,
+      deadLetterRoutingKey: RabbitQueue.ORDER_COMMANDS_DLQ,
+    });
+  }
 }
 
 export function getRabbitChannel() {

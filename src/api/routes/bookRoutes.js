@@ -6,8 +6,11 @@ import { OrderCommandType } from "../../application/commands/OrderCommandTypes.j
 import { redisBookReadModel } from "../../infrastructure/redis/RedisBookReadModel.js";
 import { redisCommandStatusStore } from "../../infrastructure/redis/RedisCommandStatusStore.js";
 import { CommandStatus } from "../../application/commands/CommandStatus.js";
+import { getPartitionId } from "../../application/partitioning/symbolPartitioner.js";
 
 export const bookRouter = express.Router();
+
+const PARTITION_COUNT = parseInt(process.env.PARTITION_COUNT ?? "1", 10);
 
 function createOrderCommand({ type, symbol, payload }) {
   return {
@@ -123,7 +126,8 @@ bookRouter.post("/books/:symbol/orders/limit", async (request, response, next) =
     });
 
     await saveQueuedCommandStatus(command);
-    await orderCommandBus.publish(command);
+    const partitionId = getPartitionId(symbol, PARTITION_COUNT);
+    await orderCommandBus.publish(command, partitionId);
 
     return response.status(202).json(
       createQueuedResponse(command, {
@@ -153,8 +157,8 @@ bookRouter.post("/books/:symbol/orders/market", async (request, response, next) 
     });
 
     await saveQueuedCommandStatus(command);
-    
-    await orderCommandBus.publish(command);
+    const partitionId = getPartitionId(symbol, PARTITION_COUNT);
+    await orderCommandBus.publish(command, partitionId);
 
     return response.status(202).json(
       createQueuedResponse(command, {
@@ -188,7 +192,8 @@ bookRouter.post(
       });
 
        await saveQueuedCommandStatus(command);
-      await orderCommandBus.publish(command);
+      const partitionId = getPartitionId(symbol, PARTITION_COUNT);
+      await orderCommandBus.publish(command, partitionId);
 
       return response.status(202).json(
         createQueuedResponse(command, {
@@ -231,7 +236,8 @@ bookRouter.post(
       });
       
       await saveQueuedCommandStatus(command);
-      await orderCommandBus.publish(command);
+      const partitionId = getPartitionId(symbol, PARTITION_COUNT);
+      await orderCommandBus.publish(command, partitionId);
 
       return response.status(202).json(
         createQueuedResponse(command, {
@@ -265,8 +271,9 @@ bookRouter.post(
         },
       });
     await saveQueuedCommandStatus(command);
+    const partitionId = getPartitionId(symbol, PARTITION_COUNT);
 
-      await orderCommandBus.publish(command);
+      await orderCommandBus.publish(command, partitionId);
 
       return response.status(202).json(
         createQueuedResponse(command, {
@@ -294,7 +301,8 @@ bookRouter.delete(
       });
 
       await saveQueuedCommandStatus(command);
-      await orderCommandBus.publish(command);
+      const partitionId = getPartitionId(symbol, PARTITION_COUNT);
+      await orderCommandBus.publish(command, partitionId);
 
       return response.status(202).json(
         createQueuedResponse(command, {

@@ -1,5 +1,5 @@
 import { connectRabbitMQ } from "../infrastructure/rabbitmq/rabbitConnection.js";
-import { RabbitQueue } from "../infrastructure/rabbitmq/rabbitConfig.js";
+import { RabbitQueue, getOrderCommandQueueName } from "../infrastructure/rabbitmq/rabbitConfig.js";
 import { createOrderRejectedEvent } from "../engine/DomainEvent.js";
 import { redisBookReadModel } from "../infrastructure/redis/RedisBookReadModel.js";
 import { redisCommandStatusStore } from "../infrastructure/redis/RedisCommandStatusStore.js";
@@ -9,6 +9,7 @@ import { redisCommandLog } from "../infrastructure/redis/RedisCommandLog.js";
 import { executeOrderCommand } from "../application/commands/executeOrderCommand.js";
 import { redisRecoverySnapshotStore } from "../infrastructure/redis/RedisRecoverySnapshotStore.js";
 import { publishMarketEvents } from "../infrastructure/redis/RedisMarketEventPubSub.js";
+import { getPartitionId } from "../application/partitioning/symbolPartitioner.js";
 
 function parseMessage(message) {
   return JSON.parse(message.content.toString("utf8"));
@@ -38,8 +39,10 @@ async function saveReadModel(symbol, book, result) {
 export async function startOrderCommandWorker({
   hasLeadership = async () => true,
   onLeadershipLost = async () => {},
+  partitionId = 0,
+  partitionCount = 1,
 } = {}) {
-  const channel = await connectRabbitMQ();
+  const channel = await connectRabbitMQ({ partitionId, partitionCount });
 
   await channel.prefetch(1);
 
@@ -70,8 +73,13 @@ export async function startOrderCommandWorker({
     }
   };
 
+  // Determine which queue to consume from
+  const targetQueue = typeof partitionId === "number"
+    ? getOrderCommandQueueName(partitionId)
+    : getOrderCommandQueueName(0);
+
   const consumer = await channel.consume(
-    RabbitQueue.ORDER_COMMANDS,
+    targetQueue,
     async (message) => {
       if (!message) {
         return;
@@ -85,6 +93,19 @@ export async function startOrderCommandWorker({
 
       try {
         const command = parseMessage(message);
+
+        // Validate command belongs to this partition
+        const commandPartitionId = getPartitionId(command.symbol, partitionCount);
+        if (commandPartitionId !== partitionId) {
+          console.error("[worker] partition mismatch", {
+            symbol: command.symbol,
+            expectedPartition: partitionId,
+            actualPartition: commandPartitionId,
+          });
+          // Move to DLQ
+          channel.nack(message, false, false);
+          return;
+        }
 
         const alreadyProcessed = await redisCommandLog.isCommandProcessed(
           command.symbol,
@@ -165,7 +186,7 @@ export async function startOrderCommandWorker({
     },
   );
 
-  console.log(`Order command worker consuming ${RabbitQueue.ORDER_COMMANDS}`);
+  console.log(`Order command worker consuming ${targetQueue}`);
 
   return {
     async stop() {

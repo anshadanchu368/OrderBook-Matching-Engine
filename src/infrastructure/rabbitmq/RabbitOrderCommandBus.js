@@ -1,14 +1,24 @@
 import { connectRabbitMQ } from "./rabbitConnection.js";
-import { RabbitQueue } from "./rabbitConfig.js";
+import { RabbitQueue, getOrderCommandQueueName } from "./rabbitConfig.js";
 
 export class RabbitOrderCommandBus {
-  async publish(command) {
+  /**
+   * Publish a command to RabbitMQ.
+   * If partitionId is provided, routes to partition-specific queue.
+   * Otherwise uses legacy single queue.
+   */
+  async publish(command, partitionId) {
     const channel = await connectRabbitMQ();
+
+    // Determine target queue
+    const targetQueue = typeof partitionId === "number"
+      ? getOrderCommandQueueName(partitionId)
+      : getOrderCommandQueueName(0);
 
     const messageBuffer = Buffer.from(JSON.stringify(command));
 
     const wasQueued = channel.sendToQueue(
-      RabbitQueue.ORDER_COMMANDS,
+      targetQueue,
       messageBuffer,
       {
         persistent: true,
