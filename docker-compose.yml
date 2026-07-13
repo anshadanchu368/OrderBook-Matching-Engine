@@ -31,6 +31,24 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       REDIS_URL: redis://redis:6379
 
+  matching-standby:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lob-matching-standby
+    working_dir: /app
+    volumes:
+      - .:/app
+      - lob_node_modules:/app/node_modules
+    command: npm run start:standby
+    environment:
+      NODE_ENV: development
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+      - rabbitmq
+
   websocket:
     build:
       context: .

@@ -97,6 +97,44 @@ export class RedisCommandLog {
   }));
 }
 
+  async readNextProcessedCommands(
+    symbol,
+    lastStreamId,
+    { blockMs = 5_000, count = 100 } = {},
+  ) {
+    const redis = await connectRedis();
+    const options = { COUNT: count };
+
+    if (blockMs > 0) {
+      options.BLOCK = blockMs;
+    }
+
+    const streams = await redis.xRead(
+      [{ key: commandLogStreamKey(symbol), id: lastStreamId }],
+      options,
+    );
+
+    if (!streams) {
+      return [];
+    }
+
+    return streams.flatMap((stream) =>
+      stream.messages.map((entry) => ({
+        id: entry.id,
+        command: JSON.parse(entry.message.command),
+      })),
+    );
+  }
+
+  async getLatestCommandStreamId(symbol) {
+    const redis = await connectRedis();
+    const entries = await redis.xRevRange(commandLogStreamKey(symbol), "+", "-", {
+      COUNT: 1,
+    });
+
+    return entries[0]?.id ?? "0-0";
+  }
+
   async getCommandCount(symbol) {
     const redis = await connectRedis();
 

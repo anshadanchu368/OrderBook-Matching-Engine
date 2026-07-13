@@ -19,10 +19,11 @@ async function replaySymbolFromCommandLog(symbol) {
     symbol,
     mode: "full-replay",
     replayedCommandCount: commands.length,
+    lastCommandStreamId: commands.at(-1)?.id ?? "0-0",
   };
 }
 
-async function recoverSymbolFromSnapshotThenReplay(symbol) {
+export async function recoverSymbolFromCommandLog(symbol) {
   const snapshot = await redisRecoverySnapshotStore.getSnapshot(symbol);
 
   if (!snapshot || !snapshot.lastCommandStreamId) {
@@ -50,6 +51,8 @@ async function recoverSymbolFromSnapshotThenReplay(symbol) {
     mode: "snapshot-plus-incremental-replay",
     checkpointStreamId: snapshot.lastCommandStreamId,
     replayedCommandCount: commandsAfterSnapshot.length,
+    lastCommandStreamId:
+      commandsAfterSnapshot.at(-1)?.id ?? snapshot.lastCommandStreamId,
   };
 }
 
@@ -63,7 +66,7 @@ export async function replayAllSymbolsFromCommandLog({ reset = false } = {}) {
   const results = [];
 
   for (const symbol of symbols) {
-    const result = await recoverSymbolFromSnapshotThenReplay(symbol);
+    const result = await recoverSymbolFromCommandLog(symbol);
     results.push(result);
   }
 

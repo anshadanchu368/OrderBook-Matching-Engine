@@ -35,15 +35,51 @@ async function saveReadModel(symbol, book, result) {
   await redisBookReadModel.appendTrades(symbol, result.trades ?? []);
 }
 
-export async function startOrderCommandWorker() {
+export async function startOrderCommandWorker({
+  hasLeadership = async () => true,
+  onLeadershipLost = async () => {},
+} = {}) {
   const channel = await connectRabbitMQ();
 
   await channel.prefetch(1);
 
-  await channel.consume(
+  let stopped = false;
+  let leadershipLossReported = false;
+
+  const reportLeadershipLost = () => {
+    if (leadershipLossReported) {
+      return;
+    }
+
+    leadershipLossReported = true;
+    void onLeadershipLost();
+  };
+
+  const checkLeadership = async () => {
+    if (stopped) {
+      return false;
+    }
+
+    try {
+      return await hasLeadership();
+    } catch (error) {
+      console.error("[leader] ownership check failed", {
+        message: error.message,
+      });
+      return false;
+    }
+  };
+
+  const consumer = await channel.consume(
     RabbitQueue.ORDER_COMMANDS,
     async (message) => {
       if (!message) {
+        return;
+      }
+
+      if (!(await checkLeadership())) {
+        channel.nack(message, false, true);
+        reportLeadershipLost();
         return;
       }
 
@@ -63,6 +99,12 @@ export async function startOrderCommandWorker() {
 
         const { book, result } = executeOrderCommand(command);
 
+        if (!(await checkLeadership())) {
+          channel.nack(message, false, true);
+          reportLeadershipLost();
+          return;
+        }
+
         const commandLogEntryId = await redisCommandLog.appendProcessedCommand(command);
 
 
@@ -79,9 +121,15 @@ export async function startOrderCommandWorker() {
 
         await updateCommandStatus(command, CommandStatus.PROCESSED);
 
+        const stillLeader = await checkLeadership();
+
         channel.ack(message);
 
         void publishMarketEvents(command.symbol, result.events ?? []);
+
+        if (!stillLeader) {
+          reportLeadershipLost();
+        }
 
         console.log(`Order command processed: ${command.type}`, {
           commandId: command.commandId,
@@ -118,4 +166,15 @@ export async function startOrderCommandWorker() {
   );
 
   console.log(`Order command worker consuming ${RabbitQueue.ORDER_COMMANDS}`);
+
+  return {
+    async stop() {
+      if (stopped) {
+        return;
+      }
+
+      stopped = true;
+      await channel.cancel(consumer.consumerTag);
+    },
+  };
 }

@@ -1,25 +1,17 @@
-import { connectRedis } from "../infrastructure/redis/redisConnection.js";
-import { connectRabbitMQ } from "../infrastructure/rabbitmq/rabbitConnection.js";
-import { replayAllSymbolsFromCommandLog } from "../application/recovery/replayCommand.js";
-import { startOrderCommandWorker } from "../workers/orderCommanderWorker.js";
+import { MatchingNode } from "../application/replication/MatchingNode.js";
 
-async function startMatchingWorker() {
-  console.log("[matching-worker] starting");
+const node = new MatchingNode();
 
-  await connectRedis();
-  console.log("[matching-worker] redis connected");
-
-  await connectRabbitMQ();
-  console.log("[matching-worker] rabbitmq connected");
-
-  const recoveryResult = await replayAllSymbolsFromCommandLog({ reset: true });
-  console.log("[matching-worker] recovery completed", recoveryResult);
-
-  await startOrderCommandWorker();
-  console.log("[matching-worker] consuming order commands");
+async function shutdown(signal) {
+  console.log("[matching-node] shutting down", { signal });
+  await node.stop();
+  process.exit(0);
 }
 
-startMatchingWorker().catch((error) => {
-  console.error("[matching-worker] failed to start", error);
+process.once("SIGTERM", () => void shutdown("SIGTERM"));
+process.once("SIGINT", () => void shutdown("SIGINT"));
+
+node.start().catch((error) => {
+  console.error("[matching-node] failed to start", error);
   process.exit(1);
 });
