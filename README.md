@@ -1,5 +1,5 @@
 # OrderBook-Matching-Engine
-A distributed, horizontally sharded LOB matching engine dividing infrastructure into an asynchronous I/O Control Plane (Node.js/TypeScript) for edge ingress and a high-performance Data Plane (Go) for order matching. The architecture eliminates vertical scaling bottlenecks by utilizing RabbitMQ exchange routing keys to partition asset pairs, enforces zero-data-loss failover via Redis-backed active-standby leader election, and mitigates execution layer thread contention via lock-free circular ring buffers (Disruptor pattern).
+A distributed, horizontally sharded LOB matching engine dividing infrastructure into an asynchronous I/O Control Plane (Node.js) for edge ingress and a high-performance Data Plane (Go) for order matching. The architecture eliminates vertical scaling bottlenecks by utilizing RabbitMQ exchange routing keys to partition asset pairs, enforces zero-data-loss failover via Redis-backed active-standby leader election, and mitigates execution layer thread contention via lock-free circular ring buffers (Disruptor pattern).
 
 This project implements a realistic exchange-style matching architecture with:
 
