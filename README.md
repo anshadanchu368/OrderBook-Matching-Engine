@@ -18,17 +18,16 @@ The goal of this project is to explore how matching engines, event-driven system
 
 ## Project Status
 
-This project is currently an educational and portfolio-grade matching engine.
+This project is an active engineering implementation of a partitioned limit order book matching engine.
 
-It is **not intended for real-money trading or production exchange usage yet**.
+The current focus is on:
 
-Current focus:
-
-- correctness
-- system design
-- recovery
-- partitioning
-- failover
+- matching correctness
+- deterministic order processing
+- fault-tolerant recovery
+- partitioned worker ownership
+- warm standby failover
+- command/event-driven architecture
 - benchmark preparation
 
 Future focus:
@@ -800,3 +799,8 @@ Goals:
 - separate matching, journaling, and market-data publishing
 - benchmark against the current RabbitMQ/Redis-based implementation
 
+## Engineering Focus
+
+This project focuses on the design and implementation of a matching-engine backend, including order book correctness, event sequencing, recovery, failover, partitioning, and operational benchmarking.
+
+Further work will focus on observability, latency measurement, stronger leader-safety guarantees, and lower-latency event pipeline design.
