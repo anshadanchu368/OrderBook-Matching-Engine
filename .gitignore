@@ -3,3 +3,9 @@ coverage/
 .env
 .DS_Store
 npm-debug.log
+# Local binaries and custom packages
+node
+lob-matching-engine@1.0.0
+
+# Editor settings
+.vscode/
