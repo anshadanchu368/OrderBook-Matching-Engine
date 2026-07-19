@@ -1,4 +1,13 @@
 services:
+  go-worker:
+    build:
+      context: ./go-worker
+    working_dir: /app
+    volumes:
+      - ./go-worker:/app
+    command: go run .
+    restart: unless-stopped
+
   api:
     build:
       context: .
