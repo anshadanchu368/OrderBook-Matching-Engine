@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"lob-matching-engine/go-worker/internal/application"
+	"lob-matching-engine/go-worker/internal/matching"
 )
 
 func integrationStore(t *testing.T) (*Store, context.Context) {
@@ -101,6 +102,55 @@ func TestRedisReadModelAndRecovery(t *testing.T) {
 	}
 	if count, _ := store.client.XLen(ctx, eventStreamKey(command.Symbol)).Result(); count != int64(len(result.Events)) {
 		t.Fatalf("event count=%d", count)
+	}
+}
+
+func TestRedisLeadershipAndMarketEventContracts(t *testing.T) {
+	store, ctx := integrationStore(t)
+	acquired, err := store.AcquireLeadership(ctx, "W1", 0)
+	if err != nil || !acquired {
+		t.Fatalf("first acquire=%v err=%v", acquired, err)
+	}
+	acquired, err = store.AcquireLeadership(ctx, "W2", 0)
+	if err != nil || acquired {
+		t.Fatalf("second acquire=%v err=%v", acquired, err)
+	}
+	renewed, err := store.RenewLeadership(ctx, "W1", 0)
+	if err != nil || !renewed {
+		t.Fatalf("renewed=%v err=%v", renewed, err)
+	}
+	released, err := store.ReleaseLeadership(ctx, "W2", 0)
+	if err != nil || released {
+		t.Fatalf("wrong-owner release=%v err=%v", released, err)
+	}
+
+	subscriber := store.client.Subscribe(ctx, marketEventsChannel)
+	defer subscriber.Close()
+	if _, err := subscriber.Receive(ctx); err != nil {
+		t.Fatal(err)
+	}
+	events := []matching.Event{{"type": matching.BookUpdated, "symbol": "BTC-INR", "sequence": int64(1)}}
+	if err := store.PublishMarketEvents(ctx, "BTC-INR", events); err != nil {
+		t.Fatal(err)
+	}
+	message, err := subscriber.ReceiveMessage(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Symbol      string           `json:"symbol"`
+		Events      []matching.Event `json:"events"`
+		PublishedAt int64            `json:"publishedAt"`
+	}
+	if err := json.Unmarshal([]byte(message.Payload), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Symbol != "BTC-INR" || len(envelope.Events) != 1 || envelope.PublishedAt == 0 {
+		t.Fatalf("envelope=%#v", envelope)
+	}
+	released, err = store.ReleaseLeadership(ctx, "W1", 0)
+	if err != nil || !released {
+		t.Fatalf("owner release=%v err=%v", released, err)
 	}
 }
 

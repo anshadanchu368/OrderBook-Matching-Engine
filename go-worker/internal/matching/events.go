@@ -10,7 +10,17 @@ const (
 	StopOrderAccepted    = "STOP_ORDER_ACCEPTED"
 	StopOrderTriggered   = "STOP_ORDER_TRIGGERED"
 	BookUpdated          = "BOOK_UPDATED"
+	OrderRejected        = "ORDER_REJECTED"
 )
+
+func RejectedEvent(symbol, commandID, orderID, commandType, reason string, now int64) Event {
+	var nullableOrderID any = orderID
+	if orderID == "" {
+		nullableOrderID = nil
+	}
+	return Event{"type": OrderRejected, "symbol": symbol, "commandId": commandID,
+		"orderId": nullableOrderID, "commandType": commandType, "reason": reason, "timestamp": now}
+}
 
 func orderAcceptedEvent(o OrderSnapshot) Event {
 	return Event{"type": OrderAccepted, "symbol": o.Symbol, "orderId": o.OrderID,

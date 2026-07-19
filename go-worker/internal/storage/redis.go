@@ -22,7 +22,23 @@ const (
 	maxCommandsPerSymbol = 100_000
 	maxEventsPerSymbol   = 10_000
 	recentTradesLimit    = 1_000
+	leaderLockTTL        = 5 * time.Second
+	LeaderRenewInterval  = 2 * time.Second
 )
+
+var renewLeaderScript = redis.NewScript(`
+  if redis.call("GET", KEYS[1]) == ARGV[1] then
+    return redis.call("PEXPIRE", KEYS[1], ARGV[2])
+  end
+  return 0
+`)
+
+var releaseLeaderScript = redis.NewScript(`
+  if redis.call("GET", KEYS[1]) == ARGV[1] then
+    return redis.call("DEL", KEYS[1])
+  end
+  return 0
+`)
 
 type Store struct {
 	client *redis.Client
@@ -39,6 +55,40 @@ func New(url string) (*Store, error) {
 
 func (s *Store) Ping(ctx context.Context) error { return s.client.Ping(ctx).Err() }
 func (s *Store) Close() error                   { return s.client.Close() }
+
+func (s *Store) AcquireLeadership(ctx context.Context, workerID string, partitionID int) (bool, error) {
+	return s.client.SetNX(ctx, partition.LeaderKey(partitionID), workerID, leaderLockTTL).Result()
+}
+
+func (s *Store) RenewLeadership(ctx context.Context, workerID string, partitionID int) (bool, error) {
+	result, err := renewLeaderScript.Run(ctx, s.client, []string{partition.LeaderKey(partitionID)},
+		workerID, strconv.FormatInt(leaderLockTTL.Milliseconds(), 10)).Int64()
+	return result == 1, err
+}
+
+func (s *Store) ReleaseLeadership(ctx context.Context, workerID string, partitionID int) (bool, error) {
+	result, err := releaseLeaderScript.Run(ctx, s.client, []string{partition.LeaderKey(partitionID)}, workerID).Int64()
+	return result == 1, err
+}
+
+func (s *Store) HasLeadership(ctx context.Context, workerID string, partitionID int) (bool, error) {
+	value, err := s.client.Get(ctx, partition.LeaderKey(partitionID)).Result()
+	if err == redis.Nil {
+		return false, nil
+	}
+	return value == workerID, err
+}
+
+func (s *Store) PublishMarketEvents(ctx context.Context, symbol string, events []matching.Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(map[string]any{"symbol": symbol, "events": events, "publishedAt": s.now()})
+	if err != nil {
+		return err
+	}
+	return s.client.Publish(ctx, marketEventsChannel, payload).Err()
+}
 
 type CommandStatus struct {
 	CommandID string                  `json:"commandId"`
