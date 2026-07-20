@@ -1,4 +1,64 @@
 services:
+  go-worker:
+    profiles:
+      - go-workers
+    build:
+      context: ./go-worker
+    container_name: lob-go-worker-0
+    working_dir: /app
+    volumes:
+      - ./go-worker:/app
+    command: go run .
+    restart: unless-stopped
+    environment:
+      PARTITION_ID: 0
+      PARTITION_COUNT: 3
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+      - rabbitmq
+
+  go-worker-1:
+    profiles:
+      - go-workers
+    build:
+      context: ./go-worker
+    container_name: lob-go-worker-1
+    working_dir: /app
+    volumes:
+      - ./go-worker:/app
+    command: go run .
+    restart: unless-stopped
+    environment:
+      PARTITION_ID: 1
+      PARTITION_COUNT: 3
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+      - rabbitmq
+
+  go-worker-2:
+    profiles:
+      - go-workers
+    build:
+      context: ./go-worker
+    container_name: lob-go-worker-2
+    working_dir: /app
+    volumes:
+      - ./go-worker:/app
+    command: go run .
+    restart: unless-stopped
+    environment:
+      PARTITION_ID: 2
+      PARTITION_COUNT: 3
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+      - rabbitmq
+
   api:
     build:
       context: .

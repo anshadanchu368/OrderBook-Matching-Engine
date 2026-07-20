@@ -154,6 +154,46 @@ redis
 rabbitmq
 ```
 
+The repository also contains an alternative Go implementation:
+
+```text
+go-worker
+go-worker-1
+go-worker-2
+```
+
+These services are active matching workers for partitions 0, 1, and 2. They
+are behind the `go-workers` Compose profile and are not Node standby workers.
+The Node implementation remains the reference implementation.
+
+### Selecting the active implementation
+
+Only one implementation may consume a partition queue. Switching modes must
+therefore stop both the active workers and standby workers from the other
+implementation before starting the selected workers.
+
+Node mode stops all Go consumers, then starts the existing Node active and
+standby workers with the shared infrastructure and edge services:
+
+```bash
+docker compose --profile go-workers stop go-worker go-worker-1 go-worker-2
+docker compose up --build api websocket redis rabbitmq matching-worker-0 matching-worker-1 matching-worker-2 matching-standby-0 matching-standby-1 matching-standby-2
+```
+
+Go mode stops all Node consumers, including standbys that could promote, then
+starts only the three Go partition workers with the shared infrastructure and
+existing Node API/WebSocket services:
+
+```bash
+docker compose stop matching-worker-0 matching-worker-1 matching-worker-2 matching-standby-0 matching-standby-1 matching-standby-2
+docker compose --profile go-workers up --build api websocket redis rabbitmq go-worker go-worker-1 go-worker-2
+```
+
+The API continues publishing the same command JSON to the same partition
+queues. The Go workers write the same Redis command status, command/event
+streams, read-model snapshots, recovery snapshots, recent trades, and
+`market:events` Pub/Sub envelope consumed by the existing WebSocket service.
+
 ### API Service
 
 The API service is stateless.
